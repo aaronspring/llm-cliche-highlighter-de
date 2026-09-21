@@ -1,0 +1,2904 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM-Floskel-Marker</title>
+<meta name="description" content="Markiert typische LLM-Floskeln in deutschen und englischen Texten — Deutsch ist voreingestellt.">
+<!--
+  LLM-Floskel-Marker — German-first fork of "LLM cliché highlighter"
+  by Simon Willison (https://github.com/simonw/tools, Apache License 2.0).
+
+  Copyright 2025 Simon Willison — original English patterns, layout and test harness.
+  Copyright 2026 climpred contributors — German pattern set, bilingual UI, dark mode.
+
+  Licensed under the Apache License, Version 2.0. You may obtain a copy of the
+  license at http://www.apache.org/licenses/LICENSE-2.0
+-->
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --raised: #f3f0e9;
+  --text: #1d1b17;
+  --muted: #6e6a62;
+  --muted-2: #a29b8d;
+  --border: #e7e3db;
+  --border-soft: #f0ede6;
+  --border-strong: #d9d4c9;
+  --code-bg: #f1eee7;
+  --flag-bg: #fef3c7;
+  --accent: #fcd34d;
+  --accent-soft: #f0e3ab;
+  --accent-strong: #f59e0b;
+  --mark-text: #1d1b17;
+  --count: #92400e;
+  --count-2: #b45309;
+  --danger: #b91c1c;
+  --shadow: rgba(29, 27, 23, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14130f;
+    --surface: #1d1c17;
+    --raised: #262420;
+    --text: #f2efe6;
+    --muted: #a8a29a;
+    --muted-2: #857f74;
+    --border: #322f28;
+    --border-soft: #272420;
+    --code-bg: #262420;
+    --border-strong: #3d3931;
+    --flag-bg: #453308;
+    --accent-soft: #6b5712;
+    --count: #fbbf24;
+    --count-2: #fde68a;
+    --danger: #f87171;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #14130f;
+  --surface: #1d1c17;
+  --raised: #262420;
+  --text: #f2efe6;
+  --muted: #a8a29a;
+  --muted-2: #857f74;
+  --border: #322f28;
+  --border-soft: #272420;
+  --code-bg: #262420;
+  --border-strong: #3d3931;
+  --flag-bg: #453308;
+  --accent-soft: #6b5712;
+  --count: #fbbf24;
+  --count-2: #fde68a;
+  --danger: #f87171;
+  --shadow: rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  padding: 28px 16px 72px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+h1 mark {
+  background: var(--accent);
+  border-radius: 3px;
+  padding: 0 5px;
+}
+
+h2 {
+  margin: 30px 0 10px;
+  font-size: 16px;
+}
+
+.subtitle {
+  margin: 0 0 22px;
+  max-width: 62ch;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.pattern-panel {
+  margin: 0 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.pattern-panel summary {
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pattern-summary-meta {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.pattern-list {
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.pattern-list > div + div {
+  margin-top: 9px;
+}
+
+.pattern-group {
+  margin: 16px 0 0;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pattern-group:first-child {
+  margin-top: 6px;
+}
+
+.pattern-group + div {
+  margin-top: 6px;
+}
+
+.pattern-list label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pattern-name {
+  font-weight: bold;
+}
+
+.pattern-count {
+  color: var(--count);
+  font-weight: bold;
+}
+
+.pattern-desc {
+  margin: 2px 0 0 25px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pattern-note {
+  margin: 10px 0 0;
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
+code {
+  padding: 1px 4px;
+  background: var(--code-bg);
+  border-radius: 3px;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+input,
+textarea {
+  font-size: 16px;
+}
+
+.url-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.url-form input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.url-form input:focus {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+.url-form button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.url-status {
+  margin: 0 0 10px;
+}
+
+.url-status.is-error {
+  color: var(--danger);
+}
+
+textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 12px 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -1px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+button {
+  padding: 6px 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--raised);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stats strong {
+  color: var(--count);
+  font-size: 20px;
+  margin-right: 2px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.skip {
+  display: block;
+  margin: 10px 0;
+  color: var(--muted-2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  user-select: none;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.output {
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.flagged {
+  background: var(--flag-bg);
+  box-shadow: 0 0 0 2px var(--flag-bg);
+  border-radius: 2px;
+}
+
+mark.hit {
+  background: var(--accent);
+  border-radius: 3px;
+  padding: 1px 2px;
+  transition: box-shadow 0.3s;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+mark.hit.pulse {
+  box-shadow: 0 0 0 2px var(--count-2);
+}
+
+.hit-tip {
+  position: absolute;
+  z-index: 10;
+  max-width: 280px;
+  padding: 6px 10px;
+  background: var(--text);
+  color: var(--surface);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.badge {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 4px;
+  padding: 1px 6px;
+  background: var(--count);
+  color: var(--surface);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: bold;
+  text-align: center;
+  position: relative;
+  top: -1px;
+  user-select: none;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.swatch-flag {
+  background: var(--flag-bg);
+  border: 1px solid var(--accent-soft);
+}
+
+.swatch-hit {
+  background: var(--accent);
+}
+
+.match-list {
+  margin: 8px 0 0;
+  padding-left: 24px;
+  font-size: 14px;
+}
+
+.match-list li {
+  margin: 5px 0;
+}
+
+.jump {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.jump:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+.match-meta {
+  color: var(--muted);
+}
+
+.test-footer {
+  margin-top: 44px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
+.test-footer summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.test-footer summary.has-fail {
+  color: var(--danger);
+  font-weight: bold;
+}
+
+.test-howto {
+  margin: 10px 0 4px;
+}
+
+.test-howto p {
+  margin: 0 0 6px;
+  max-width: 74ch;
+}
+
+.test-cmd {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: var(--code-bg);
+  border-radius: 6px;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+
+.test-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.test-list li {
+  margin: 3px 0;
+}
+
+.test-list .fail {
+  color: var(--danger);
+}
+
+/* --- Fork additions: language switcher, theme toggle, detection hint --- */
+
+mark.hit,
+h1 mark {
+  color: var(--mark-text);
+}
+
+.langbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.langbar-label {
+  font-weight: bold;
+}
+
+.lang-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lang-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.lang-options label:has(input:checked) {
+  background: var(--flag-bg);
+  border-color: var(--accent-strong);
+  font-weight: bold;
+}
+
+.lang-options input {
+  margin: 0;
+}
+
+.theme-toggle {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.detect-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  background: var(--flag-bg);
+  border: 1px solid var(--accent-soft);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.detect-hint button {
+  background: var(--surface);
+}
+
+.pattern-lang {
+  margin: 18px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--count);
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pattern-lang:first-child {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.pattern-lang + .pattern-group {
+  margin-top: 8px;
+}
+
+.credit {
+  margin: 30px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.credit a {
+  color: inherit;
+}
+
+@media (max-width: 480px) {
+  .langbar {
+    font-size: 13px;
+  }
+
+  .theme-toggle {
+    margin-left: 0;
+  }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1 data-i18n-html="h1"></h1>
+  <p class="subtitle" data-i18n-html="subtitle"></p>
+
+  <div class="langbar">
+    <span class="langbar-label" data-i18n="langLabel"></span>
+    <div class="lang-options" id="lang-options">
+      <label><input type="radio" name="lang" value="de" checked><span>Deutsch</span></label>
+      <label><input type="radio" name="lang" value="en"><span>English</span></label>
+      <label><input type="radio" name="lang" value="both"><span data-i18n="langBoth"></span></label>
+    </div>
+    <button type="button" id="theme-toggle" class="theme-toggle"></button>
+  </div>
+
+  <p id="detect-hint" class="detect-hint" hidden>
+    <span id="detect-hint-text"></span>
+    <button type="button" id="detect-switch"></button>
+    <button type="button" id="detect-dismiss" data-i18n="detectDismiss"></button>
+  </p>
+
+  <div id="stats" class="stats" hidden></div>
+
+  <details class="pattern-panel">
+    <summary><span data-i18n="patterns"></span><span id="pattern-summary-meta" class="pattern-summary-meta"></span></summary>
+    <div id="pattern-list" class="pattern-list" aria-label="Patterns"></div>
+  </details>
+
+  <form id="url-form" class="url-form" aria-label="Load text from a URL">
+    <input type="text" id="url-input" inputmode="url" autocomplete="off" spellcheck="false" data-i18n-placeholder="urlPlaceholder" aria-label="URL">
+    <button type="submit" id="load-url" data-i18n="loadUrl"></button>
+  </form>
+  <p id="url-status" class="hint url-status" hidden></p>
+
+  <textarea id="input" spellcheck="false" data-i18n-placeholder="inputPlaceholder" aria-label="Text"></textarea>
+
+  <div class="controls">
+    <button id="example" type="button" data-i18n="loadExample"></button>
+    <button id="clear" type="button" data-i18n="clear"></button>
+    <label class="toggle"><input type="checkbox" id="highlights-only" checked> <span data-i18n="highlightsOnly"></span></label>
+  </div>
+
+  <p id="empty-hint" class="hint" data-i18n="emptyHint"></p>
+
+  <section id="output-section" hidden>
+    <h2 data-i18n="outputHeading"></h2>
+    <div id="output" class="output"></div>
+    <div class="legend">
+      <span><span class="swatch swatch-flag"></span><span data-i18n="legendSentence"></span></span>
+      <span><span class="swatch swatch-hit"></span><span data-i18n="legendHit"></span></span>
+      <span><span class="badge">3</span> <span data-i18n="legendBadge"></span></span>
+    </div>
+  </section>
+
+  <section id="match-section" hidden>
+    <h2 data-i18n="matchHeading"></h2>
+    <ol id="matches" class="match-list"></ol>
+  </section>
+
+  <p class="credit" data-i18n-html="credit"></p>
+
+  <footer class="test-footer">
+    <details>
+      <summary id="test-summary"></summary>
+      <div class="test-howto">
+        <p data-i18n="testHowto"></p>
+        <pre class="test-cmd">node -e 's=require("fs").readFileSync(0,"utf8");cut=n=&gt;s.split(`// ==== ${n} start ====`)[1].split(`// ==== ${n} end ====`)[0];eval(cut("impl")+cut("tests")+`let f=0;for(const t of selfTests){try{t.fn()}catch(e){f++;console.log("FAIL "+t.name+": "+e.message)}}console.log((selfTests.length-f)+" passed, "+f+" failed");process.exitCode=f?1:0`)' &lt; index.html</pre>
+      </div>
+      <ul id="test-list" class="test-list"></ul>
+    </details>
+  </footer>
+</main>
+<script type="module">
+// ==== impl start ====
+// German-first fork of Simon Willison's "LLM cliché highlighter".
+//
+// Each pattern: { id, lang, group?, name, description, find(text) -> [{ start, end, badge?, badgeTitle?, count? }] }
+// Add new patterns to the PATTERNS_DE / PATTERNS_EN arrays and they get a checkbox,
+// a per-pattern count and highlighting for free.
+//
+// makeChainFinder builds a detector for "HEAD X, HEAD Y, ..." lists and counts the items
+// (the conjunctions used as list separators are per-language); makeRegexFinder wraps a
+// plain regex (must use the g flag); makeEchoFinder builds a detector for runs of
+// consecutive sentences repeating the same multi-word skeleton; makeQuestionChainFinder
+// flags runs of consecutive question sentences; makeAnaphoraFinder flags runs of
+// consecutive sentences opening on the same word. The last three take their badge
+// wording and their stop-word list from the language they are registered for.
+
+const CHAIN_BODY = String.raw`[^,.;:!?\n–—…]*`;
+// Unicode-aware word boundaries: JS \b is ASCII-only, which breaks on "über", "größer"
+// or "Möglichkeiten". Every regex in this file that touches a non-ASCII letter at a word
+// edge uses these instead, and therefore also carries the u flag.
+const WB = String.raw`(?<![\p{L}\p{N}_])`;
+const WE = String.raw`(?![\p{L}\p{N}_])`;
+
+function buildChainSep(conjunctions) {
+  const conj = '(?:' + conjunctions.join('|') + ')';
+  return String.raw`(?:\s*,\s*(?:${conj}\s+)?|\s+${conj}\s+|\s*[;&–—]\s*(?:${conj}\s+)?|\s+-{1,2}\s+)`;
+}
+
+const CHAIN_SEP_EN = buildChainSep(['and', 'or']);
+const CHAIN_SEP_DE = buildChainSep(['und', 'oder', 'sowie', 'noch', 'aber']);
+
+function makeChainFinder(head, headTest, itemLabel, sep = CHAIN_SEP_EN) {
+  const item = head + CHAIN_BODY;
+  const chain = new RegExp(WB + String.raw`${item}(?:${sep}${item})+`, 'giu');
+  const split = new RegExp(sep, 'iu');
+  return function (text) {
+    const found = [];
+    for (const m of text.matchAll(chain)) {
+      let end = m.index + m[0].length;
+      while (end > m.index && /\s/.test(text[end - 1])) end -= 1;
+      const count = m[0].split(split).filter(p => headTest.test(p.trim())).length;
+      found.push({
+        start: m.index,
+        end,
+        count,
+        badge: String(count),
+        badgeTitle: count + ' ' + (count === 1 ? itemLabel.one : itemLabel.many)
+      });
+    }
+    return found;
+  };
+}
+
+function makeRegexFinder(re) {
+  return function (text) {
+    const found = [];
+    for (const m of text.matchAll(re)) {
+      found.push({ start: m.index, end: m.index + m[0].length });
+    }
+    return found;
+  };
+}
+
+// makeEchoFinder builds a detector for runs of consecutive sentences that
+// repeat the same multi-word skeleton -- the "X does A. Y does B." triad.
+// The badge counts the echoing sentences.
+function makeEchoFinder({ minGram = 3, minRun = 2, label } = {}) {
+  const SENT = /[^.!?\n]+[.!?]?/g;
+  const grams = (s, n) => {
+    const w = s.toLowerCase().match(/[\p{L}\p{N}'’-]+/gu) || [];
+    const out = new Set();
+    for (let i = 0; i + n <= w.length; i++) out.add(w.slice(i, i + n).join(' '));
+    return out;
+  };
+  return function (text) {
+    const sents = [];
+    for (const m of text.matchAll(SENT)) {
+      if ((m[0].match(/\S+/g) || []).length >= 4) {
+        sents.push({ start: m.index, end: m.index + m[0].length, text: m[0] });
+      }
+    }
+    const found = [];
+    let i = 0;
+    while (i < sents.length) {
+      let j = i;
+      let shared = null;
+      while (j + 1 < sents.length) {
+        if (sents[j + 1].start - sents[j].end > 3) break; // adjacent prose only
+        const a = grams(sents[j].text, minGram);
+        const b = grams(sents[j + 1].text, minGram);
+        const common = [...a].filter(g => b.has(g));
+        if (!common.length) break;
+        shared = common.sort((x, y) => y.length - x.length)[0];
+        j += 1;
+      }
+      const run = j - i + 1;
+      if (run >= minRun && shared) {
+        let end = sents[j].end;
+        while (end > sents[i].start && /\s/.test(text[end - 1])) end -= 1;
+        found.push({
+          start: sents[i].start,
+          end,
+          count: run,
+          badge: String(run),
+          badgeTitle: label(run, shared)
+        });
+        i = j + 1;
+      } else {
+        i += 1;
+      }
+    }
+    return found;
+  };
+}
+
+// Flags runs of consecutive question sentences -- the stacked rhetorical
+// interrogation. The badge counts the questions.
+function makeQuestionChainFinder({ minRun = 2, label } = {}) {
+  const chain = /[^.!?\n]+\?(?:\s+[^.!?\n]+\?)+/g;
+  return function (text) {
+    const found = [];
+    for (const m of text.matchAll(chain)) {
+      const count = (m[0].match(/\?/g) || []).length;
+      if (count < minRun) continue;
+      let start = m.index;
+      while (start < m.index + m[0].length && /\s/.test(text[start])) start += 1;
+      found.push({
+        start,
+        end: m.index + m[0].length,
+        count,
+        badge: String(count),
+        badgeTitle: label(count)
+      });
+    }
+    return found;
+  };
+}
+
+// Flags runs of consecutive sentences opening on the same word -- "Maybe X.
+// Maybe Y. Maybe Z." Pronouns and articles are skipped, since repeating those
+// is just ordinary prose, so the stop list is per-language. The badge counts
+// the sentences.
+const ANAPHORA_SKIP_EN = /^(?:i|it|the|a|an|this|that|we|you|they|he|she|there|but|and|so|in|as|if|my|his|her|their|its|these|those|for|at|on|of|to|is|was)$/i;
+const ANAPHORA_SKIP_DE = /^(?:ich|du|er|sie|es|wir|ihr|man|der|die|das|den|dem|des|ein|eine|einen|einem|einer|eines|dies|diese|dieser|dieses|diesen|diesem|jene|und|aber|oder|denn|in|im|auf|an|am|mit|für|zu|zur|zum|von|vom|bei|nach|aus|als|wenn|dass|da|dann|so|auch|nicht|ist|war|sind|waren|hat|hatte|kann|wird|werden|sein|seine|ihre|mein|meine|hier|dort|noch|nur|schon|sehr|dabei)$/i;
+
+function makeAnaphoraFinder({ minRun = 3, skip = ANAPHORA_SKIP_EN, label } = {}) {
+  const SENT = /[^.!?\n]+[.!?]/g;
+  return function (text) {
+    const sents = [];
+    for (const m of text.matchAll(SENT)) {
+      const w = m[0].match(/[\p{L}'’-]+/u);
+      if (w) {
+        sents.push({
+          start: m.index + m[0].indexOf(w[0]),
+          end: m.index + m[0].length,
+          head: w[0].toLowerCase()
+        });
+      }
+    }
+    const found = [];
+    let i = 0;
+    while (i < sents.length) {
+      let j = i;
+      while (j + 1 < sents.length && sents[j + 1].head === sents[i].head
+             && sents[j + 1].start - sents[j].end < 4) j += 1;
+      const run = j - i + 1;
+      if (run >= minRun && !skip.test(sents[i].head)) {
+        found.push({
+          start: sents[i].start,
+          end: sents[j].end,
+          count: run,
+          badge: String(run),
+          badgeTitle: label(run, sents[i].head)
+        });
+        i = j + 1;
+      } else i += 1;
+    }
+    return found;
+  };
+}
+
+// Pattern groups. Patterns in the "Signs of AI writing" groups are adapted from
+// Wikipedia's guide: https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+const WIKI_GROUP_EN = 'Signs of AI writing (Wikipedia)';
+const WIKI_GROUP_DE = 'Anzeichen für KI-Text (Wikipedia)';
+const TIC_GROUP_DE = 'Rhetorische Tics';
+const CALQUE_GROUP_DE = 'Anglizismen & Lehnübersetzungen';
+
+const LABELS_EN = {
+  echo: (n, gram) => n + ' sentences echoing “' + gram + '”',
+  questions: n => n + ' questions in a row',
+  anaphora: (n, word) => n + ' sentences opening “' + word + '”'
+};
+
+const LABELS_DE = {
+  echo: (n, gram) => n + ' Sätze wiederholen „' + gram + '“',
+  questions: n => n + ' Fragen in Folge',
+  anaphora: (n, word) => n + ' Sätze beginnen mit „' + word + '“'
+};
+
+const PATTERNS_EN = [
+  {
+    id: 'no-chain',
+    lang: 'en',
+    name: '“No X, no Y” chains',
+    description: 'Two or more “no …” items in a row, e.g. “No fluff, no filler, no jargon.” The badge counts the “no” items.',
+    find: makeChainFinder(String.raw`no[-\s]`, /^no[-\s]/i, { one: '\u201cno\u201d item', many: '\u201cno\u201d items' })
+  },
+  {
+    id: 'whole',
+    lang: 'en',
+    name: '“That’s the whole …”',
+    description: '“That / this is the whole point, game, thing …”',
+    find: makeRegexFinder(/\b(?:that|this)(?:['\u2019]s|\s+(?:is|was))\s+the\s+whole\b(?:\s+\w+)?/gi)
+  },
+  {
+    id: 'did-not-chain',
+    lang: 'en',
+    name: '“Did not X, did not Y” chains',
+    description: 'Two or more “did not …” or “didn’t …” items in a row. The badge counts the items.',
+    find: makeChainFinder(String.raw`(?:did\s+not|didn['\u2019]t)\s`, /^(?:did\s+not|didn['\u2019]t)\s/i, { one: '\u201cdid not\u201d item', many: '\u201cdid not\u201d items' })
+  },
+  {
+    id: 'dont-verb-it',
+    lang: 'en',
+    name: '“Don’t VERB it … VERB it”',
+    description: '“Don’t call it X. Call it Y.” — a negated verb + “it”, then the same verb + “it” again.',
+    find: makeRegexFinder(/\b(?:do\s+not|don['\u2019]t)\s+(?:just\s+|simply\s+|merely\s+)?(\w+)(?:\s+(?:of|about|at|on|for|with|to))?\s+it\b[^.!?\n]*?[.!?;,:\u2013\u2014]['"\u201d\u2019]*\s*(?:just\s+|simply\s+|merely\s+)?\1(?:\s+(?:of|about|at|on|for|with|to))?\s+it\b/gi)
+  },
+  {
+    id: 'sit-with',
+    lang: 'en',
+    name: '“Sit with that”',
+    description: 'The reflective “sit with that / this / it (for a moment)”, plus “sit with the discomfort” and friends.',
+    find: makeRegexFinder(/\bsit(?:s|ting)?\s+with\s+(?:that|this|it|(?:the|your)\s+(?:discomfort|feelings?|tension|weight|uncertainty|ambiguity|grief|silence|unease))\b(?:\s+for\s+a\s+\w+)?/gi)
+  },
+  {
+    id: 'already-know',
+    lang: 'en',
+    name: '“You already know”',
+    description: '“You already know” — the answer, what to do, or standing alone before a full stop.',
+    find: makeRegexFinder(/\byou\s+already\s+knows?\s+(?:the\s+answer|what|how|why|this|that|it|who|where)\b|\byou\s+already\s+knows?\b(?![ \t]+\w)/gi)
+  },
+  {
+    id: 'is-the-entire',
+    lang: 'en',
+    name: '“Is the entire …”',
+    description: '“X is the entire point / game / business model.”',
+    find: makeRegexFinder(/(?:\b(?:is|was|are|were)|['\u2019]s)\s+the\s+entire\b(?:\s+\w+)?/gi)
+  },
+  {
+    id: 'the-entire-is',
+    lang: 'en',
+    name: '“The entire … is”',
+    description: '“The entire point / game / business model is …” — the flipped twin of “is the entire”.',
+    find: makeRegexFinder(/\bthe\s+entire\s+[\w'\u2019-]+(?:\s+[\w'\u2019-]+){0,4}?\s+(?:is|was|are|were)\b/gi)
+  },
+  {
+    id: 'is-real',
+    lang: 'en',
+    name: '“Is real … and / not”',
+    description: '“The X is real, and / not …”, including “is the real … and it”. Skips “real estate”, “real time”, and similar.',
+    find: makeRegexFinder(/\bis\s+(?:(?:the|a)\s+real\b(?![\s-]+(?:estate|time|life|world|quick)\b)[^.!?\n]*?\b(?:and|not)\s+it\b|real\b(?![\s-]+(?:estate|time|life|world|quick)\b)[^.!?\n]*?\b(?:and|not)\b)/gi)
+  },
+  {
+    id: 'punchline',
+    lang: 'en',
+    name: '“The punchline is”',
+    description: '“The punchline is …”, “the punchline:”, or “the punchline?”.',
+    find: makeRegexFinder(/\bthe\s+punchline(?:\s+(?:is|was|being)\b|\s*[:?])/gi)
+  },
+  {
+    id: 'worth-naming',
+    lang: 'en',
+    name: '“Worth naming”',
+    description: 'The therapist-voiced “that loss is real and it’s worth naming”, “it’s worth naming that …”, or a “Worth naming:” opener. Skips “naming names”.',
+    find: makeRegexFinder(/(?:\b(?:is|are|was|were|feels?|felt|seems?|seemed)|['\u2019]s)\s+(?:\w+\s+){0,2}?worth\s+naming\b(?!\s+names\b)|\bworth\s+naming\s*:/gi)
+  },
+  {
+    id: 'not-nothing',
+    lang: 'en',
+    name: '\u201cThat\u2019s not nothing\u201d',
+    description: '\u201cThat is not nothing\u201d / \u201cthat\u2019s not nothing\u201d, plus the \u201cthis / it / which is not nothing\u201d variants.',
+    find: makeRegexFinder(/\b(?:that|this|it|which)(?:['\u2019]s|\s+(?:is|was))\s+not\s+nothing\b/gi)
+  },
+  {
+    id: 'is-the-whole',
+    lang: 'en',
+    name: '“Is the whole …”',
+    description: 'Any subject + “is the whole point / trick / pitch / idea”, plus the “here is the whole …” opener. The twin of “is the entire …”, and a generalisation of “That’s the whole …” to subjects other than that/this.',
+    find: makeRegexFinder(/(?:\b(?:is|was|are|were)|['’]s)\s+the\s+whole\b(?:\s+\w+)?|\bhere(?:['’]s|\s+is)\s+the\s+whole\b(?:\s+\w+)?/gi)
+  },
+  {
+    id: 'echo-triad',
+    lang: 'en',
+    name: 'Echoing sentence runs',
+    description: 'Consecutive sentences built on the same repeated skeleton — “A shopping cart is an object in the system. A chat room is an object in the system.” The badge counts the echoing sentences.',
+    find: makeEchoFinder({ minGram: 4, minRun: 2, label: LABELS_EN.echo })
+  },
+  {
+    id: 'performative-honesty',
+    lang: 'en',
+    name: 'Performative honesty',
+    description: 'Sincerity announced rather than demonstrated: “I won’t pretend”, “I’ll be honest”, “let’s be honest”, “to be clear”, and sentence-initial “Honestly,” or “Look,”.',
+    find: makeRegexFinder(/\bI\s+(?:will\s+not|won['’]t)\s+pretend\b|\b(?:I['’]ll|let['’]s|to)\s+be\s+(?:honest|clear|blunt|real)\b|(?:^|[.!?–—]\s+|\n)(?:Honestly|Look|Truthfully|Frankly)\s*,/gi)
+  },
+  {
+    id: 'thats-the-part',
+    lang: 'en',
+    name: '“That’s the part …”',
+    description: 'Gesturing at a favoured detail instead of stating it: “that is the part a counter can’t reach”, “the part that makes me trust the rest”, “my favourite part of …”.',
+    find: makeRegexFinder(/\b(?:that|this|it)(?:['’]s|\s+(?:is|was))\s+the\s+part\b|\bthe\s+part\s+that\s+(?:makes|made|gets|got|keeps|kept)\s+(?:me|you|us|it)\b|\bmy\s+favou?rite\s+part\s+of\b/gi)
+  },
+  {
+    id: 'the-only-i-trust',
+    lang: 'en',
+    name: '“The only X I trust”',
+    description: 'The narrowing superlative reveal: “the only marketing I trust”, “the only thing it needs”, “the only X that matters”.',
+    find: makeRegexFinder(/\bthe\s+only\s+[\w'’-]+(?:\s+[\w'’-]+){0,2}?\s+(?:I|you|we|it|he|she|they)\s+(?:trust|need|needs|care|want|wants|use|uses|believe)\b|\bthe\s+only\s+[\w'’-]+\s+that\s+(?:matters|counts|works|survives)\b/gi)
+  },
+  {
+    id: 'take-my-word',
+    lang: 'en',
+    name: '“Don’t take my word for it”',
+    description: 'The stock invitation to verify: “you don’t have to take my word for it”, “don’t take my word for any of this”.',
+    find: makeRegexFinder(/\b(?:you\s+)?(?:do\s+not|don['’]t)\s+(?:have\s+to\s+)?take\s+my\s+word\s+for\s+(?:it|any\s+of\s+(?:it|this|that))\b/gi)
+  },
+  {
+    id: 'turns-out',
+    lang: 'en',
+    name: '“Turns out …”',
+    description: 'The casual-revelation opener, almost always bolted to a tidy conclusion: “Turns out X”, “it turns out that X”.',
+    find: makeRegexFinder(/(?:^|[.!?–—]\s+|\n)Turns\s+out\b|\bit\s+turns\s+out\s+that\b/gi)
+  },
+  {
+    id: 'fits-in-your-head',
+    lang: 'en',
+    name: '“Fits in your head”',
+    description: 'Dev-blog boilerplate for simplicity: “small enough to hold in your head”, “batteries included”, “it just works”, “zero config”, “sane defaults”.',
+    find: makeRegexFinder(/\b(?:hold|fit|fits|holds|held)\s+(?:it\s+)?in\s+your\s+head\b|\bbatteries[-\s]included\b|\bit\s+just\s+works\b|\bzero[-\s]config(?:uration)?\b|\bsane\s+defaults\b/gi)
+  },
+  {
+    id: 'stacked-questions',
+    lang: 'en',
+    name: 'Stacked rhetorical questions',
+    description: 'Two or more questions fired in a row, usually fragments after the first: “Do I know how it works? Where it breaks? Which corners it cut?” The badge counts the questions.',
+    find: makeQuestionChainFinder({ minRun: 2, label: LABELS_EN.questions })
+  },
+  {
+    id: 'sentence-anaphora',
+    lang: 'en',
+    name: 'Repeated sentence openers',
+    description: 'Three or more consecutive sentences starting on the same word — “Maybe nobody needed it. Maybe it introduced … Maybe a small convenience …” Pronouns and articles are ignored. The badge counts the sentences.',
+    find: makeAnaphoraFinder({ minRun: 3, skip: ANAPHORA_SKIP_EN, label: LABELS_EN.anaphora })
+  },
+  {
+    id: 'colon-triple',
+    lang: 'en',
+    name: 'Colon into a triple',
+    description: 'A colon opening onto three or more comma-separated items: “separate ports, processes, and local state”. The most common shape LLM prose uses to sound concrete. Noisy in technical writing — leave it off by default if your corpus is documentation.',
+    find: makeRegexFinder(/:\s+[^.!?;:\n]{2,40},\s+[^.!?;:\n]{2,40},\s+(?:and\s+|or\s+)?[^.!?;:\n]{2,40}(?=[.!?\n])/g)
+  },
+  {
+    id: 'heres-the-twist',
+    lang: 'en',
+    name: '“Here’s the twist”',
+    description: 'The stage-managed reveal: “here’s the twist”, “here’s the thing”, “here’s the catch / kicker / rub”, “here’s the first example:”.',
+    find: makeRegexFinder(/\bhere(?:['’]s|\s+is)\s+(?:the|a|my|one)\s+(?:twist|thing|catch|kicker|rub|problem|first|second|third|next|recent|real|best|worst|surprising|interesting|key|important)\b[\w\s-]{0,20}[:.]/gi)
+  },
+  {
+    id: 'x-is-dead',
+    lang: 'en',
+    name: '“X is dead”',
+    description: 'The obituary headline and its sequel: “peer code review is dead”, “botd is dead; long live botd”.',
+    find: makeRegexFinder(/\b[\w\s]{3,30}\s+(?:is|are)\s+dead\b|\blong\s+live\s+\w+/gi)
+  },
+  {
+    id: 'thats-why-mattered',
+    lang: 'en',
+    name: '“That’s why X mattered”',
+    description: 'Retroactively assigning significance: “that’s why being able to open the environment mattered”, “this is why preserving every conversation mattered”.',
+    find: makeRegexFinder(/\b(?:that|this)(?:['’]s|\s+(?:is|was))\s+why\b[^.!?\n]{0,80}?\b(?:matter(?:s|ed)?|count(?:s|ed)?)\b/gi)
+  },
+  {
+    id: 'stranded-auxiliary',
+    lang: 'en',
+    name: 'Stranded auxiliary contrast',
+    description: 'A clause that lands on a bare auxiliary for the reversal: “The tool died; the data didn’t.”, “Reading mostly passed … Writing didn’t”, “Maybe it wouldn’t have.”',
+    find: makeRegexFinder(/[;:,]\s+[^.;:!?\n]{2,50}\s(?:did|does|do|was|were|is|are|has|have|had|can|could|would|will)(?:n['’]t)?\s*[.;]|\b(?:Maybe|Perhaps)\s+\w+[^.!?\n]{0,40}\s(?:would|could|might|should|did|had|was|is)(?:n['’]t)?\s+(?:have\s*)?\./g)
+  },
+  {
+    id: 'ai-vocab',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: 'AI vocabulary words',
+    description: 'Words LLMs lean on far more than people do: \u201cdelve\u201d, \u201ctapestry\u201d, \u201cmeticulous\u201d, \u201cpivotal\u201d, \u201cintricate\u201d, \u201cinterplay\u201d, \u201cunderscore\u201d, \u201cgarner\u201d, \u201cbolster\u201d, \u201cvibrant\u201d, \u201cbustling\u201d, \u201cmultifaceted\u201d, \u201cseamless\u201d, \u201cever-evolving\u201d. One hit can be coincidence \u2014 several is a tell.',
+    find: makeRegexFinder(/\b(?:delv(?:e|es|ed|ing)|tapestr(?:y|ies)|meticulous(?:ly)?|pivotal|intricate(?:ly)?|intricacies|interplay|underscor(?:e|es|ed|ing)|garner(?:s|ed|ing)?|bolster(?:s|ed|ing)?|vibrant|bustling|multifaceted|seamless(?:ly)?|commendable|ever-evolving)\b/gi)
+  },
+  {
+    id: 'not-just',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cNot just X, but Y\u201d',
+    description: 'Negative parallelisms: \u201cnot just X, but (also) Y\u201d, \u201cnot only \u2026 but \u2026\u201d, and the \u201cit\u2019s not X \u2014 it\u2019s Y\u201d contrast.',
+    find: makeRegexFinder(/\bnot\s+(?:just|only|merely|simply)\s+[^.!?\n;]*?\bbut(?:\s+also)?\b|\b(?:it|this|that)(?:['\u2019]s|\s+(?:is|was))\s+not\s+[^.!?\n,;\u2014\u2013]{1,60}[,;\u2014\u2013]\s*(?:it|this|that)(?:['\u2019]s|\s+(?:is|was))\b/gi)
+  },
+  {
+    id: 'not-but',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cNot X, but Y\u201d',
+    description: 'Plain negative parallelism: \u201cnot X, but Y\u201d, including the split-sentence \u201cisn\u2019t X. It\u2019s Y\u201d form. The intensified \u201cnot just / only\u201d variants have their own pattern.',
+    find: makeRegexFinder(/\bnot\s+(?!(?:just|only|merely|simply)\b)[^.!?\n;]{1,100}?\bbut\b|\b(?:isn['\u2019]t|is not)\s+[^.!?\n]{1,80}[.!?]\s*(?:it['\u2019]s|it is|this['\u2019]s|this is|that['\u2019]s|that is)\b/gi)
+  },
+  {
+    id: 'note-that',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cIt\u2019s important to note\u201d',
+    description: 'Didactic hedging: \u201cit is important to note that\u201d, \u201cit\u2019s worth noting\u201d, \u201cit should be noted\u201d, plus the \u201cworth pausing / considering / asking\u201d family.',
+    find: makeRegexFinder(/\bit(?:['\u2019]s|\s+(?:is|was))\s+(?:also\s+)?(?:important|worth|crucial|essential|vital)\s+(?:to\s+(?:note|remember|understand|recognize|mention|pause|consider|ask)|noting|mentioning|remembering|pausing|considering|asking)\b(?:\s+that\b)?|\bit\s+should\s+be\s+noted\b/gi)
+  },
+  {
+    id: 'testament',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cStands as a testament\u201d',
+    description: '\u201cStands / serves as a testament (or reminder)\u201d, \u201cis a testament to\u201d \u2014 inflating significance instead of saying what happened.',
+    find: makeRegexFinder(/\b(?:stand|stands|stood|serve|serves|served|standing|serving)\s+as\s+(?:a|an)\s+(?:\w+\s+)?(?:testament|reminder)\b|\b(?:is|was|are|were|remain|remains)\s+a\s+(?:\w+\s+)?testament\s+to\b/gi)
+  },
+  {
+    id: 'crucial-role',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cPlays a crucial role\u201d',
+    description: '\u201cPlays a crucial / pivotal / vital / key / significant role in \u2026\u201d.',
+    find: makeRegexFinder(/\bplay(?:s|ed|ing)?\s+(?:a|an)\s+(?:\w+\s+)?(?:crucial|pivotal|vital|key|significant|central|critical|important)\s+role\b/gi)
+  },
+  {
+    id: 'landscape',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cEver-evolving landscape\u201d',
+    description: 'Scene-setting boilerplate: \u201cthe ever-evolving / changing / shifting landscape\u201d, \u201cin today\u2019s fast-paced world\u201d.',
+    find: makeRegexFinder(/\b(?:ever-)?(?:evolving|changing|shifting)\s+landscape\b|\bin\s+today['\u2019]s\s+(?:fast-paced|ever-changing|ever-evolving|digital|modern|competitive)\s+\w+/gi)
+  },
+  {
+    id: 'vague-experts',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cExperts argue\u201d',
+    description: 'Vague attribution to unnamed authorities: \u201cexperts argue\u201d, \u201csome critics have noted\u201d, \u201cobservers suggest\u201d, \u201cindustry reports indicate\u201d.',
+    find: makeRegexFinder(/\b(?:many|some|several|most|numerous)?\s*(?:experts|critics|observers|scholars|analysts|commentators)\s+(?:have\s+|often\s+|widely\s+)?(?:argu(?:e|es|ed)|not(?:e|es|ed)|suggest(?:s|ed)?|believ(?:e|es|ed)|agree[ds]?|contend(?:s|ed)?|observ(?:e|es|ed)|caution(?:s|ed)?|claim(?:s|ed)?|cit(?:e|es|ed)|point(?:s|ed)?\s+out)\b|\bindustry\s+reports?\s+(?:suggest|indicate|show)\w*\b/gi)
+  },
+  {
+    id: 'despite-challenges',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: '\u201cDespite these challenges\u201d',
+    description: 'The boilerplate challenges-and-outlook formula: \u201cdespite these challenges\u201d, \u201cfaces several challenges\u201d, \u201cchallenges remain\u201d, \u201cremains to be seen\u201d, \u201ctime will tell\u201d.',
+    find: makeRegexFinder(/\bdespite\s+(?:these|those|such|its|their|the|numerous|significant|ongoing)\s+(?:\w+\s+)?challenges\b|\bfac(?:e|es|ed|ing)\s+(?:several|numerous|many|significant|various|a\s+number\s+of)\s+challenges\b|\bchallenges\s+remain\b|\bremains\s+to\s+be\s+seen\b|\b(?:only\s+)?time\s+will\s+tell\b/gi)
+  },
+  {
+    id: 'participle-tail',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: 'Participle sentence tails',
+    description: 'Superficial analysis bolted onto a sentence end: \u201c\u2026, highlighting / underscoring / showcasing / reflecting the \u2026\u201d.',
+    find: makeRegexFinder(/,\s+(?:highlighting|underscoring|emphasizing|showcasing|reflecting|demonstrating|illustrating|signaling|solidifying|cementing|reinforcing|underlining)\s+(?:its|his|her|their|our|the|a|an|how|that|what|both)\b[^.!?\n]*/gi)
+  },
+  {
+    id: 'promo',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: 'Promotional boilerplate',
+    description: 'Travel-brochure tone: \u201cnestled in\u201d, \u201cin the heart of\u201d, \u201crich tapestry / heritage\u201d, \u201chidden gem\u201d, \u201cboasts a\u201d, \u201cbreathtaking\u201d, \u201cstunning views\u201d.',
+    find: makeRegexFinder(/\bnestled\s+(?:in|on|among|between|along|at)\b|\bin\s+the\s+heart\s+of\b|\brich\s+(?:cultural\s+|historical\s+)?(?:heritage|history|tapestry)\b|\bhidden\s+gem\b|\bmust-(?:visit|see|try)\b|\bbreathtaking\b|\bboasts?\s+(?:a|an|the)\b|\bstunning\s+(?:views?|scenery|architecture|backdrop)\b/gi)
+  },
+  {
+    id: 'ai-leftovers',
+    lang: 'en',
+    group: WIKI_GROUP_EN,
+    name: 'Chatbot leftovers',
+    description: 'Artifacts pasted straight from a chatbot: \u201cas an AI language model\u201d, \u201cas of my last update\u201d, \u201cknowledge cutoff\u201d, plus markup debris like \u201coaicite\u201d, \u201ccontentReference\u201d, \u201cturn0search\u201d and \u201cutm_source=\u201d tracking parameters.',
+    find: makeRegexFinder(/\bas\s+an\s+ai(?:\s+language)?\s+model\b|\bas\s+of\s+my\s+last\s+(?:update|training)\b|\bknowledge\s+cutoff\b|\bI\s+(?:cannot|can['\u2019]t|do\s+not|don['\u2019]t)\s+(?:browse\s+the\s+internet|access\s+real-?time)\b|contentReference|oaicite|turn0(?:search|news|image)\d*|attributableIndex|utm_source=/gi)
+  }
+];
+
+// ---- Deutsche Muster ----------------------------------------------------
+// Das deutsche Pendant zum englischen Satz oben: Floskeln, die Sprachmodelle
+// im Deutschen deutlich häufiger produzieren als Menschen. Alle Regexes laufen
+// mit u-Flag, damit Umlaute und ß nicht an ASCII-Wortgrenzen scheitern.
+
+const PATTERNS_DE = [
+  {
+    id: 'de-kein-kette',
+    lang: 'de',
+    name: '„Kein X, kein Y“-Ketten',
+    description: 'Zwei oder mehr „kein …“-Glieder hintereinander, z. B. „Keine Anmeldung, kein Download, kein Stress.“ Das Abzeichen zählt die Glieder.',
+    find: makeChainFinder(String.raw`kein(?:e[mnrs]?)?[-\s]`, /^kein(?:e[mnrs]?)?[-\s]/iu, { one: '„kein“-Glied', many: '„kein“-Glieder' }, CHAIN_SEP_DE)
+  },
+  {
+    id: 'de-ohne-kette',
+    lang: 'de',
+    name: '„Ohne X, ohne Y“-Ketten',
+    description: 'Die Verzichts-Kette: „ohne Schnörkel, ohne Ballast, ohne Fachjargon“. Das Abzeichen zählt die Glieder.',
+    find: makeChainFinder(String.raw`ohne\s`, /^ohne\s/iu, { one: '„ohne“-Glied', many: '„ohne“-Glieder' }, CHAIN_SEP_DE)
+  },
+  {
+    id: 'de-ganzer-punkt',
+    lang: 'de',
+    name: '„Das ist der ganze Punkt“',
+    description: 'Die Bedeutungs-Zuweisung statt der Aussage: „Genau das ist der ganze Punkt“, „das ist der eigentliche Kniff“, „genau darum geht es“.',
+    find: makeRegexFinder(/\b(?:und\s+)?(?:genau\s+)?(?:das|dies|es)\s+(?:ist|war)\s+(?:der|das|die)\s+(?:ganze|eigentliche|entscheidende|springende|wahre|einzige)[nrs]?\s+(?:Punkt|Trick|Kniff|Witz|Sinn|Zweck|Kern|Idee|Prinzip|Spiel|Pitch|Geschäftsmodell|Botschaft|Unterschied)\b|\b(?:und\s+)?genau\s+(?:darum|deshalb|deswegen)\s+geht\s+es\b/giu)
+  },
+  {
+    id: 'de-nenn-es-nicht',
+    lang: 'de',
+    name: '„Nenn es nicht X – nenn es Y“',
+    description: 'Die Umbenennungs-Figur: ein verneintes „nenn es X“, dann dasselbe Verb positiv.',
+    find: makeRegexFinder(/\b(?:nenn|nenne|nennt|nennen\s+Sie)\s+es\s+nicht\s+[^.!?\n]{1,60}?[.!?;,:–—]\s*["“„]?\s*(?:nenn|nenne|nennt|nennen\s+Sie)\s+es\b/giu)
+  },
+  {
+    id: 'de-sacken-lassen',
+    lang: 'de',
+    name: '„Lass das sacken“',
+    description: 'Der Therapieton: „Lass das einen Moment sacken“, „lass das wirken“, „bleib kurz bei diesem Gefühl“.',
+    find: makeRegexFinder(/\b(?:lass|lasst|lassen\s+Sie)\s+(?:das|dies|es|diese[sn]?)\s+(?:kurz\s+|mal\s+|erst\s+mal\s+|(?:für\s+)?einen\s+(?:Moment|Augenblick)\s+)?(?:sacken|wirken|setzen|einsinken)\b|\bbleib(?:e|en\s+Sie)?\s+(?:kurz\s+|einen\s+Moment\s+)?(?:bei|mit)\s+(?:diesem|dieser|dem|der)\s+(?:Gefühl|Unbehagen|Schmerz|Spannung|Stille|Unsicherheit|Leere)\b/giu)
+  },
+  {
+    id: 'de-du-weisst-es',
+    lang: 'de',
+    name: '„Du weißt es längst“',
+    description: 'Die unterstellte Einsicht: „Du weißt es längst“, „im Grunde weißt du es bereits“, „du kennst die Antwort schon“.',
+    find: makeRegexFinder(/\b(?:du|Sie|ihr)\s+(?:weißt|wisst|wissen|kennst|kennt|kennen)\s+(?:(?:die\s+Antwort|die\s+Wahrheit|es|das)\s+)?(?:doch\s+|ja\s+)?(?:längst|bereits|schon|insgeheim)\b|\b(?:weißt|wisst|wissen)\s+(?:du|Sie|ihr)\s+(?:es\s+)?(?:doch\s+)?(?:längst|bereits|schon)\b|\b(?:du|Sie)\s+(?:kennst|kennen)\s+die\s+Antwort\b/giu)
+  },
+  {
+    id: 'de-nicht-wenig',
+    lang: 'de',
+    name: '„Und das ist nicht wenig“',
+    description: 'Die aufgewertete Kleinigkeit: „und das ist nicht wenig“, „das ist nicht nichts“.',
+    find: makeRegexFinder(/\b(?:und\s+)?(?:das|dies|es)\s+ist\s+(?:wirklich\s+|schon\s+|immerhin\s+)?nicht\s+(?:nichts|wenig)\b/giu)
+  },
+  {
+    id: 'de-pointe',
+    lang: 'de',
+    name: '„Die Pointe ist“',
+    description: 'Die angekündigte Pointe: „Die Pointe: …“, „die Pointe ist …“, „der Witz daran?“.',
+    find: makeRegexFinder(/\bdie\s+Pointe(?:\s+(?:ist|war|lautet)\b|\s*[:?])|\b(?:der\s+Witz|die\s+Ironie)\s+(?:daran|dabei)(?:\s+(?:ist|war)\b|\s*[:?])/giu)
+  },
+  {
+    id: 'de-haken',
+    lang: 'de',
+    name: '„Und jetzt kommt der Clou“',
+    description: 'Der inszenierte Umschwung: „und jetzt kommt der Clou“, „der Haken:“, „das Beste daran?“, „jetzt wird es spannend“.',
+    find: makeRegexFinder(/\b(?:und\s+)?(?:hier|jetzt|nun)\s+kommt\s+(?:der|das|die)\s+(?:Haken|Clou|Twist|Knackpunkt|Beste|Spannende|Wichtigste|Entscheidende|Problem|Pointe)\b|\b(?:der|das)\s+(?:Haken|Clou|Knackpunkt|Kicker)(?:\s+(?:ist|war)\b|\s*[:?])|\bdas\s+Beste\s+(?:daran|dabei)\s*[:?]|\b(?:und\s+)?jetzt\s+wird\s+es\s+(?:interessant|spannend)\b/giu)
+  },
+  {
+    id: 'de-nominalfrage',
+    lang: 'de',
+    name: '„Das Ergebnis? Beeindruckend.“',
+    description: 'Die Nominalfrage als Cliffhanger: ein Substantiv plus Fragezeichen, dann die knappe Antwort. „Die Folge? Ein Rückruf.“',
+    find: makeRegexFinder(/\b(?:das\s+(?:Ergebnis|Resultat|Problem|Beste|Fazit|Ziel)|die\s+(?:Folge|Konsequenz|Antwort|Wahrheit|Realität|Lösung|Bilanz)|der\s+(?:Grund|Effekt|Unterschied|Haken|Preis))\s*\?(?=\s+\S)/giu)
+  },
+  {
+    id: 'de-ehrlichkeit',
+    lang: 'de',
+    name: 'Aufgeführte Ehrlichkeit',
+    description: 'Aufrichtigkeit wird angekündigt statt gezeigt: „Ehrlich gesagt,“, „seien wir ehrlich“, „Klartext:“, „machen wir uns nichts vor“.',
+    find: makeRegexFinder(/(?:^|[.!?–—]\s+|\n)(?:Ehrlich\s+gesagt|Ganz\s+ehrlich|Offen\s+gesagt|Um\s+ehrlich\s+zu\s+sein|Klartext|Mal\s+ehrlich)\s*[,:]|\bseien\s+wir\s+(?:mal\s+)?ehrlich\b|\bich\s+(?:will|werde)\s+(?:hier\s+)?nicht\s+behaupten\b|\bmachen\s+wir\s+uns\s+nichts\s+vor\b|\bum\s+es\s+(?:klar|deutlich)\s+zu\s+sagen\b/giu)
+  },
+  {
+    id: 'de-wenn-es-darum-geht',
+    lang: 'de',
+    name: '„Wenn es darum geht …“',
+    description: 'Der Themen-Anlauf ohne Inhalt: „Wenn es darum geht, Vertrauen aufzubauen …“, „wenn es um Sichtbarkeit geht“.',
+    find: makeRegexFinder(/\bwenn\s+es\s+(?:darum|um\s+[^.!?\n,]{1,40}?)\s+geht\b/giu)
+  },
+  {
+    id: 'de-eintauchen',
+    lang: 'de',
+    name: '„Tauchen wir ein“',
+    description: 'Die Einladungs-Floskel: „Tauchen wir ein in …“, „lass uns gemeinsam eintauchen“, „werfen wir einen genaueren Blick“, „in die Welt von …“.',
+    find: makeRegexFinder(/\b(?:tauchen\s+wir|lass(?:t|en\s+Sie)?\s+uns)\s+(?:gemeinsam\s+)?(?:tiefer\s+)?(?:ein\b|eintauchen\b|in\s+die\s+Welt\b)|\btiefer\s+ein(?:tauchen|steigen)\b|\b(?:werfen\s+wir|lass(?:t|en\s+Sie)?\s+uns)\s+(?:gemeinsam\s+)?einen\s+(?:genaueren\s+|kurzen\s+)?Blick\b|\bin\s+die\s+(?:faszinierende\s+|spannende\s+|bunte\s+)?Welt\s+(?:von|der|des)\b/giu)
+  },
+  {
+    id: 'de-ist-tot',
+    lang: 'de',
+    name: '„X ist tot“',
+    description: 'Die Nachruf-Schlagzeile und ihre Fortsetzung: „Der alte Importer ist tot – lang lebe der Importer.“',
+    find: makeRegexFinder(/[\p{L}\s]{3,30}\s+ist\s+tot\b|\blang\s+lebe\s+\p{L}+/giu)
+  },
+  {
+    id: 'de-einzige-was-zaehlt',
+    lang: 'de',
+    name: '„Das Einzige, was zählt“',
+    description: 'Der verengende Superlativ: „das Einzige, was zählt“, „das einzige Tool, dem ich traue“.',
+    find: makeRegexFinder(/\bdas\s+einzige,\s+was\s+(?:zählt|funktioniert|bleibt|hilft|wirkt)\b|\bdas\s+einzige\s+\p{L}+,\s+(?:dem|der|das)\s+ich\s+(?:traue|vertraue|glaube)\b|\bdie\s+einzige\s+\p{L}+,\s+die\s+(?:zählt|funktioniert|bleibt)\b/giu)
+  },
+  {
+    id: 'de-glaub-mir-nicht',
+    lang: 'de',
+    name: '„Du musst mir nicht glauben“',
+    description: 'Die Standard-Einladung zum Nachprüfen: „Du musst mir nicht glauben“, „nimm mich nicht beim Wort“.',
+    find: makeRegexFinder(/\b(?:du\s+)?musst\s+mir\s+(?:das\s+)?nicht\s+(?:glauben|vertrauen)\b|\bglaub(?:e)?\s+(?:mir\s+)?(?:das\s+)?nicht\s+einfach\b|\bnimm\s+mich\s+nicht\s+beim\s+Wort\b/giu)
+  },
+  {
+    id: 'de-stellt-sich-heraus',
+    lang: 'de',
+    name: '„Wie sich herausstellt“',
+    description: 'Der beiläufige Enthüllungs-Auftakt, fast immer an ein sauberes Fazit geschraubt: „Wie sich herausstellt …“, „es stellte sich heraus, dass …“.',
+    find: makeRegexFinder(/\bwie\s+sich\s+(?:später\s+|dann\s+)?herausstellt(?:e)?\b|\bes\s+stellt(?:e)?\s+sich\s+heraus,?\s+dass\b|\bwie\s+es\s+sich\s+zeigt(?:e)?\b/giu)
+  },
+  {
+    id: 'de-funktioniert-einfach',
+    lang: 'de',
+    name: '„Passt in einen Kopf“',
+    description: 'Entwicklerblog-Bausteine für Einfachheit: „passt in einen Kopf“, „es funktioniert einfach“, „ohne Konfiguration“, „sinnvolle Standardwerte“.',
+    find: makeRegexFinder(/\bpasst\s+in\s+(?:einen|deinen|den)\s+Kopf\b|\bim\s+Kopf\s+behalten\b|\bes\s+funktioniert\s+einfach\b|\bzero[-\s]config(?:uration)?\b|\bohne\s+(?:jede\s+)?Konfiguration\b|\bsinnvolle\s+(?:Standardwerte|Standardeinstellungen|Defaults)\b|\bbatteries[-\s]included\b/giu)
+  },
+  {
+    id: 'de-stapelfragen',
+    lang: 'de',
+    name: 'Gestapelte rhetorische Fragen',
+    description: 'Zwei oder mehr Fragen in Folge, die zweite meist ein Fragment: „Weiß ich, wie es funktioniert? Wo es bricht?“ Das Abzeichen zählt die Fragen.',
+    find: makeQuestionChainFinder({ minRun: 2, label: LABELS_DE.questions })
+  },
+  {
+    id: 'de-satzanaphora',
+    lang: 'de',
+    name: 'Wiederholte Satzanfänge',
+    description: 'Drei oder mehr aufeinanderfolgende Sätze mit demselben Anfangswort — „Vielleicht … Vielleicht … Vielleicht …“. Pronomen und Artikel werden ignoriert. Das Abzeichen zählt die Sätze.',
+    find: makeAnaphoraFinder({ minRun: 3, skip: ANAPHORA_SKIP_DE, label: LABELS_DE.anaphora })
+  },
+  {
+    id: 'de-echo',
+    lang: 'de',
+    name: 'Echo-Satzketten',
+    description: 'Aufeinanderfolgende Sätze auf demselben Gerüst — „Der Parser ist ein kleiner Automat. Der Renderer ist ein kleiner Automat.“ Das Abzeichen zählt die Echo-Sätze.',
+    find: makeEchoFinder({ minGram: 4, minRun: 2, label: LABELS_DE.echo })
+  },
+  {
+    id: 'de-doppelpunkt-dreiklang',
+    lang: 'de',
+    name: 'Doppelpunkt in den Dreiklang',
+    description: 'Ein Doppelpunkt, der sich in drei Glieder öffnet: „drei Dinge: einen Blogpost, ein Demo-Video und eine Preisseite“. In Dokumentation laut — dann besser abschalten.',
+    find: makeRegexFinder(/:\s+[^.!?;:\n]{2,40},\s+[^.!?;:\n]{2,40},\s+(?:und\s+|oder\s+|sowie\s+)?[^.!?;:\n]{2,40}(?=[.!?\n])|:\s+[^.!?;:\n]{2,40},\s+[^.!?;:\n]{2,40}\s+(?:und|oder|sowie)\s+[^.!?;:\n]{2,40}(?=[.!?\n])/gu)
+  },
+  {
+    id: 'de-genau-deshalb',
+    lang: 'de',
+    name: '„Genau deshalb war X wichtig“',
+    description: 'Bedeutung im Rückblick verteilt: „Genau deshalb war der Export-Button so wichtig“, „darum hat jede Konversation gezählt“.',
+    find: makeRegexFinder(/\b(?:und\s+)?(?:genau\s+)?(?:deshalb|darum|deswegen)\s+[^.!?\n]{0,80}?\b(?:wichtig|entscheidend|wertvoll|zentral|zählt|zählte|gezählt)\b/giu)
+  },
+  {
+    id: 'de-nachgestellte-negation',
+    lang: 'de',
+    name: 'Nachgestellte Negation',
+    description: 'Der Satz, der auf einem bloßen „nicht“ landet: „Das Tool starb; die Daten nicht.“, „Vielleicht auch nicht.“',
+    find: makeRegexFinder(/[;:,]\s+[^.;:!?\n]{2,50}\s+nicht\s*[.;]|\b(?:Vielleicht|Möglicherweise)\s+[^.!?\n]{0,40}\s+nicht\s*\./gu)
+  },
+  {
+    id: 'de-reise',
+    lang: 'de',
+    name: '„Auf deiner Reise“',
+    description: 'Die Coaching-Reise: „auf deiner Reise“, „die Reise beginnt“, „Reise zu dir selbst“.',
+    find: makeRegexFinder(/\b(?:auf|für)\s+(?:deiner|Ihrer|dieser|seiner|meiner)\s+(?:persönlichen\s+|ganz\s+eigenen\s+)?Reise\b|\bdie\s+Reise\s+(?:beginnt|geht\s+weiter)\b|\bReise\s+zu\s+(?:dir|sich|Ihnen)\s+selbst\b/giu)
+  },
+  {
+    id: 'de-ki-vokabular',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: 'KI-Vokabular',
+    description: 'Wörter, die Sprachmodelle weit häufiger benutzen als Menschen: „ganzheitlich“, „facettenreich“, „maßgeschneidert“, „wegweisend“, „nahtlos“, „Mehrwert“, „Herzstück“, „Synergie“, „Zusammenspiel“. Ein Treffer ist Zufall — mehrere sind ein Indiz.',
+    find: makeRegexFinder(new RegExp(WB + '(?:ganzheitlich|facettenreich|vielschichtig|maßgeschneidert|wegweisend|bahnbrechend|revolutionär|innovativ|nahtlos|akribisch|unermüdlich|transformativ|zukunftsweisend|Synergie|Mehrwert|Herzstück|Meilenstein|Leuchtturmprojekt|Spannungsfeld|Zusammenspiel|beleuchte|Fülle)\\p{L}*' + WE, 'giu'))
+  },
+  {
+    id: 'de-nicht-nur-sondern',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Nicht nur X, sondern auch Y“',
+    description: 'Negative Parallelismen: „nicht nur X, sondern auch Y“, „weder X noch Y“, und der Kontrast „Es ist kein X – es ist Y“.',
+    find: makeRegexFinder(/\bnicht\s+nur\s+[^.!?\n;]*?\bsondern(?:\s+auch)?\b|\b(?:es|das|dies)\s+ist\s+(?:kein|keine|nicht)\s+[^.!?\n,;—–]{1,60}[,;—–][ \t]*(?:es|das|dies)\s+ist\b|\bweder\s+[^.!?\n;]{1,60}?\bnoch\b/giu)
+  },
+  {
+    id: 'de-nicht-sondern',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Nicht X, sondern Y“',
+    description: 'Der schlichte Gegensatz: „keine Deko, sondern Orientierung“, samt der auf zwei Sätze verteilten Form „… ist keine Deko. Es ist Orientierung.“ Die verstärkte „nicht nur“-Variante hat ihr eigenes Muster.',
+    find: makeRegexFinder(/\b(?:nicht|kein(?:e[mnrs]?)?)\s+(?!nur\b)[^.!?\n;]{1,100}?\bsondern\b|\b(?:ist|war)\s+kein(?:e[mnrs]?)?\s+[^.!?\n]{1,80}[.!?][ \t]*(?:es|das|dies|er|sie)\s+ist\b/giu)
+  },
+  {
+    id: 'de-wichtig-zu-beachten',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Es ist wichtig zu beachten“',
+    description: 'Belehrendes Absichern: „Es ist wichtig zu beachten, dass …“, „es sei angemerkt“, „erwähnenswert ist“, „dabei gilt es zu bedenken“.',
+    find: makeRegexFinder(/\bes\s+(?:ist|sei)\s+(?:auch\s+)?(?:wichtig|wesentlich|entscheidend|zentral)\s+zu\s+(?:beachten|erwähnen|verstehen|betonen|bedenken|wissen)\b|\bes\s+(?:ist|sei)\s+(?:anzumerken|hervorzuheben|festzuhalten|erwähnenswert)\b|\bes\s+sei\s+(?:angemerkt|erwähnt|betont)\b|\bes\s+lohnt\s+sich\s*,?\s+zu\s+(?:erwähnen|betonen|fragen|innehalten)\b|\bdabei\s+gilt\s+es\s+zu\s+(?:bedenken|beachten)\b|\bnicht\s+zu\s+vergessen\s*[,:]|\ban\s+dieser\s+Stelle\s+sei\s+(?:erwähnt|angemerkt)\b/giu)
+  },
+  {
+    id: 'de-zeugnis',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Ist ein Zeugnis für“',
+    description: 'Bedeutung aufblasen statt berichten: „ist ein Zeugnis/Beweis/Beleg für“, „zeugt von“, „steht sinnbildlich für“, „spricht Bände“.',
+    find: makeRegexFinder(/\b(?:ist|war|sind|waren|bleibt|bleiben)\s+(?:ein\s+|der\s+|das\s+)?(?:eindrucksvolles\s+|lebendiges\s+|klares\s+|stiller\s+)?(?:Zeugnis|Beweis|Beleg|Sinnbild|Ausdruck)\s+(?:für|dafür|von)\b|\bzeug(?:t|en|te|ten)\s+von\b|\bsteht\s+(?:sinnbildlich|exemplarisch|symbolisch)\s+für\b|\bspricht\s+Bände\b/giu)
+  },
+  {
+    id: 'de-entscheidende-rolle',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Spielt eine entscheidende Rolle“',
+    description: '„Spielt eine entscheidende / zentrale / maßgebliche Rolle“, „nimmt eine Schlüsselrolle ein“.',
+    find: makeRegexFinder(/\bspiel(?:t|en|te|ten)\s+(?:dabei\s+|hier\s+)?(?:eine|die)\s+(?:\p{L}+\s+)?(?:entscheidende|zentrale|wichtige|maßgebliche|tragende|große|besondere)\s+Rolle\b|\bnimmt\s+eine\s+(?:Schlüsselrolle|Vorreiterrolle|Sonderrolle)\s+ein\b|\bkommt\s+(?:dabei\s+)?eine\s+(?:entscheidende|zentrale|wichtige)\s+(?:Rolle|Bedeutung)\s+zu\b/giu)
+  },
+  {
+    id: 'de-landschaft',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Sich ständig wandelnde Landschaft“',
+    description: 'Kulissen-Bausteine: „die sich ständig wandelnde Landschaft“, „in der heutigen schnelllebigen Welt“, „im digitalen Zeitalter“.',
+    find: makeRegexFinder(/\b(?:sich\s+)?(?:ständig|stetig|rasant)\s+(?:wandelnde|verändernde|weiterentwickelnde)\p{L}*\s+(?:Landschaft|Welt|Umfeld|Branche)\b|\bin\s+der\s+heutigen\s+(?:schnelllebigen|digitalen|vernetzten|modernen|komplexen)\s+(?:Welt|Zeit|Arbeitswelt|Gesellschaft)\b|\bim\s+(?:digitalen|heutigen)\s+Zeitalter\b/giu)
+  },
+  {
+    id: 'de-experten',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Experten sind sich einig“',
+    description: 'Vage Zuschreibung an ungenannte Autoritäten: „Experten sind sich einig“, „Fachleute betonen“, „Studien zeigen“, „Branchenberichte deuten darauf hin“.',
+    find: makeRegexFinder(/\b(?:viele|einige|manche|zahlreiche|die\s+meisten)?\s*(?:Experten|Expertinnen|Fachleute|Kritiker|Beobachter|Analysten|Forscher|Wissenschaftler|Branchenkenner)\s+(?:sind\s+sich\s+einig|argumentieren|betonen|warnen|meinen|weisen\s+darauf\s+hin|gehen\s+davon\s+aus|sagen|kritisieren|merken\s+an)\b|\bStudien\s+(?:zeigen|belegen|deuten\s+darauf\s+hin)\b|\bBranchenberichte\s+(?:deuten|zeigen|legen)\b|\bes\s+wird\s+(?:oft|häufig|vielfach)\s+(?:argumentiert|behauptet|angenommen)\b/giu)
+  },
+  {
+    id: 'de-herausforderungen',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: '„Trotz dieser Herausforderungen“',
+    description: 'Die Herausforderungen-und-Ausblick-Formel: „trotz dieser Herausforderungen“, „steht vor zahlreichen Herausforderungen“, „es bleibt abzuwarten“, „die Zeit wird es zeigen“.',
+    find: makeRegexFinder(/\btrotz\s+(?:dieser|jener|zahlreicher|erheblicher|anhaltender|der|aller)\s+(?:\p{L}+\s+)?Herausforderungen\b|\bsteht\s+vor\s+(?:zahlreichen|vielen|großen|erheblichen|einigen)\s+Herausforderungen\b|\bHerausforderungen\s+bleiben\b|\bes\s+bleibt\s+abzuwarten\b|\b(?:nur\s+)?die\s+Zeit\s+wird\s+(?:es\s+)?zeigen\b/giu)
+  },
+  {
+    id: 'de-partizip-schwanz',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: 'Nachgestellte Deutungs-Schwänze',
+    description: 'Flache Analyse an den Satzschluss geschraubt: „…, was die Investitionen unterstreicht“, „…, wodurch die Stärke der Marke deutlich wird“.',
+    find: makeRegexFinder(/,\s+(?:was|wodurch|womit|damit)\s+[^.!?\n]*?(?:unterstreicht|verdeutlicht|widerspiegelt|hervorhebt|untermauert|zementiert|festigt|belegt|betont|deutlich\s+(?:wird|macht))\b[^.!?\n]*/giu)
+  },
+  {
+    id: 'de-werbesprache',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: 'Werbeprospekt-Ton',
+    description: 'Reisekatalog-Sprache: „eingebettet in“, „im Herzen von“, „reiche Tradition“, „verborgenes Juwel“, „atemberaubend“, „besticht durch“.',
+    find: makeRegexFinder(/\beingebettet\s+in\b|\bim\s+Herzen\s+(?:von|der|des)\b|\breiche[nrs]?\s+(?:Geschichte|Tradition|Kultur|Vielfalt)\b|\bverborgene[nrs]?\s+(?:Juwel|Schatz|Perle)\b|\bein\s+Muss\s+für\b|\batemberaubend\p{L}*|\bbesticht\s+(?:durch|mit)\b|\bmalerisch\p{L}*|\bbeeindruckende\s+Kulisse\b|\bWohlfühl\p{L}*/giu)
+  },
+  {
+    id: 'de-schlussfloskel',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: 'Zusammenfassungs-Floskeln',
+    description: 'Der aufgesetzte Schlussabsatz: „Zusammenfassend lässt sich sagen“, „abschließend bleibt festzuhalten“, „unterm Strich“, „Fazit:“ am Zeilenanfang.',
+    find: makeRegexFinder(/\bzusammenfassend\s+(?:lässt\s+sich\s+sagen|kann\s+man\s+sagen|gilt)\b|\babschließend\s+(?:lässt\s+sich\s+festhalten|bleibt\s+festzuhalten|gilt)\b|\b(?:alles\s+in\s+allem|insgesamt\s+betrachtet|unterm\s+Strich|letzten\s+Endes)\b|\bwie\s+wir\s+gesehen\s+haben\b|(?:^|\n)\s*Fazit\s*:/giu)
+  },
+  {
+    id: 'de-uebergangsfloskeln',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: 'Übergangs-Floskeln am Satzanfang',
+    description: 'Die Gliederungs-Scharniere, die Modelle absatzweise setzen: „Darüber hinaus“, „Des Weiteren“, „Zudem“, „Nicht zuletzt“, „Folglich“. In journalistischer Prosa laut — dann abschalten.',
+    find: makeRegexFinder(/(?:^|[.!?]\s+|\n)(?:Darüber\s+hinaus|Des\s+Weiteren|Zudem|Nicht\s+zuletzt|Folglich|Somit|In\s+diesem\s+Zusammenhang|Vor\s+diesem\s+Hintergrund|Gleichzeitig\s+gilt)\b/gu)
+  },
+  {
+    id: 'de-chatbot-reste',
+    lang: 'de',
+    group: WIKI_GROUP_DE,
+    name: 'Chatbot-Reste',
+    description: 'Direkt aus dem Chatfenster kopiert: „Als KI-Sprachmodell“, „Stand meines letzten Updates“, „Ich hoffe, das hilft dir!“, plus Markup-Müll wie „oaicite“, „contentReference“ und „utm_source=“.',
+    find: makeRegexFinder(/\bals\s+(?:KI|AI)[-\s]?(?:Sprachmodell|Modell|Assistent)\b|\bals\s+künstliche\s+Intelligenz\s+(?:kann|habe|darf)\b|\bStand\s+meines\s+letzten\s+(?:Updates|Trainings)\b|\bmein\s+Wissensstand\s+(?:reicht|endet)\b|\bich\s+habe\s+keinen\s+Zugriff\s+auf\s+(?:Echtzeit|das\s+Internet)\p{L}*|\bich\s+hoffe,\s+(?:das|dies)\s+hilft\s+(?:dir|Ihnen|euch)\b|contentReference|oaicite|turn0(?:search|news|image)\d*|attributableIndex|utm_source=/giu)
+  },
+  {
+    id: 'de-anglizismen',
+    lang: 'de',
+    group: CALQUE_GROUP_DE,
+    name: 'Lehnübersetzungen aus dem Englischen',
+    description: 'Wendungen, die als englische Floskel gedacht und dann eingedeutscht wurden: „am Ende des Tages“, „das Beste aus beiden Welten“, „Gamechanger“, „Deep Dive“, „Sinn machen“, „auf das nächste Level“.',
+    find: makeRegexFinder(/\bam\s+Ende\s+des\s+Tages\b|\bdas\s+Beste\s+aus\s+beiden\s+Welten\b|\bauf\s+(?:ein|das)\s+(?:neue|nächste)s?\s+Level\b|\bGame[-\s]?changer\b|\bDeep\s+Dive\b|\blow[-\s]hanging\s+fruits?\b|\bquick\s+wins?\b|\b(?:Sinn\s+machen|macht\s+Sinn|machen\s+Sinn)\b|\b(?:ein|das)\s+Problem\s+adressieren\b|\bnicht\s+in\s+Stein\s+gemeißelt\b/giu)
+  },
+  {
+    id: 'de-verbrauchte-metaphern',
+    lang: 'de',
+    group: CALQUE_GROUP_DE,
+    name: 'Verbrauchte Metaphern',
+    description: 'Die Bilder, die in jedem zweiten generierten Absatz auftauchen: „das Rad neu erfinden“, „der Elefant im Raum“, „die Spitze des Eisbergs“, „der rote Faden“, „ein zweischneidiges Schwert“, „Quantensprung“.',
+    find: makeRegexFinder(/\bdas\s+Rad\s+neu\s+erfinden\b|\bder\s+Elefant\s+im\s+Raum\b|\bdie\s+Spitze\s+des\s+Eisbergs\b|\bdas\s+A\s+und\s+O\b|\bder\s+rote\s+Faden\b|\bein\s+zweischneidiges\s+Schwert\b|\bLicht\s+ins\s+Dunkel\s+bringen\b|\bden\s+Nagel\s+auf\s+den\s+Kopf\s+treffen\b|\bQuantensprung\b|\bdie\s+Weichen\s+stellen\b/giu)
+  }
+];
+
+const patterns = [...PATTERNS_DE, ...PATTERNS_EN];
+const patternsById = Object.fromEntries(patterns.map(p => [p.id, p]));
+
+// Language selection: 'de' (default), 'en' or 'both'.
+const LANGS = ['de', 'en', 'both'];
+const DEFAULT_LANG = 'de';
+
+function patternsFor(lang) {
+  return lang === 'both' ? patterns : patterns.filter(p => p.lang === lang);
+}
+
+// Pairs of pattern ids that are allowed to overlap in the output: the repeated
+// sentence opener spans several sentences, and a phrase cliché inside one of
+// them is still worth its own highlight.
+const OVERLAP_OK = [
+  ['sentence-anaphora', 'not-but'],
+  ['de-satzanaphora', 'de-nicht-sondern']
+];
+
+function mayOverlap(a, b) {
+  return OVERLAP_OK.some(pair => pair.includes(a) && pair.includes(b) && a !== b);
+}
+
+// Rough language guess, used only to offer a switch when the pasted text is
+// plainly in the other language. Counts function words that are common in one
+// language and rare in the other; returns null when it is not sure.
+const DE_MARKERS = /(?<![\p{L}\p{N}_])(?:der|die|das|und|nicht|ist|sich|ein|eine|mit|auch|aber|wir|dass|für|über|wie|noch|schon|werden|wurde|kann|sind|haben|hat|sehr|mehr|bei|vom|zum|zur|durch|ohne|immer|nur)(?![\p{L}\p{N}_])/giu;
+const EN_MARKERS = /(?<![\p{L}\p{N}_])(?:the|and|is|are|was|were|not|with|that|this|for|have|has|but|you|they|from|about|would|could|should|there|their|what|when|which|been|will|just|also|only)(?![\p{L}\p{N}_])/giu;
+
+function detectLanguage(text) {
+  const words = text.match(/[\p{L}'’-]+/gu);
+  if (!words || words.length < 12) return null;
+  const de = (text.match(DE_MARKERS) || []).length;
+  const en = (text.match(EN_MARKERS) || []).length;
+  if (de + en < 4) return null;
+  if (de >= en * 2) return 'de';
+  if (en >= de * 2) return 'en';
+  return null;
+}
+
+const CONTEXT_WORDS = 12;
+
+function countWords(s) {
+  const m = s.match(/\S+/g);
+  return m ? m.length : 0;
+}
+
+function expandLeft(text, pos, words) {
+  let i = pos;
+  let count = 0;
+  while (i > 0 && count < words) {
+    while (i > 0 && /\s/.test(text[i - 1])) i -= 1;
+    if (i === 0) break;
+    while (i > 0 && !/\s/.test(text[i - 1])) i -= 1;
+    count += 1;
+  }
+  return i;
+}
+
+function expandRight(text, pos, words) {
+  let i = pos;
+  let count = 0;
+  while (i < text.length && count < words) {
+    while (i < text.length && /\s/.test(text[i])) i += 1;
+    if (i === text.length) break;
+    while (i < text.length && !/\s/.test(text[i])) i += 1;
+    count += 1;
+  }
+  return i;
+}
+
+function buildWindows(text, regions) {
+  const windows = [];
+  for (const r of regions) {
+    const ws = expandLeft(text, r.start, CONTEXT_WORDS);
+    const we = expandRight(text, r.end, CONTEXT_WORDS);
+    const last = windows[windows.length - 1];
+    if (last && (ws <= last.end || countWords(text.slice(last.end, ws)) === 0)) {
+      last.end = Math.max(last.end, we);
+      last.regions.push(r);
+    } else {
+      windows.push({ start: ws, end: we, regions: [r] });
+    }
+  }
+  return windows;
+}
+
+function collectMatches(text, enabled) {
+  const perPattern = {};
+  const raw = [];
+  for (const p of patterns) {
+    perPattern[p.id] = 0;
+    if (!enabled.has(p.id)) continue;
+    for (const m of p.find(text)) {
+      m.patternId = p.id;
+      raw.push(m);
+    }
+  }
+  raw.sort((a, b) => a.start - b.start || b.end - a.end);
+  const matches = [];
+  for (const m of raw) {
+    const last = matches[matches.length - 1];
+    if (last && m.start < last.end && !mayOverlap(last.patternId, m.patternId)) continue;
+    m.id = matches.length;
+    matches.push(m);
+    perPattern[m.patternId] += 1;
+  }
+  return { matches, perPattern };
+}
+
+function buildRegions(text, matches) {
+  const regions = [];
+  for (const m of matches) {
+    const [s, e] = sentenceBounds(text, m.start, m.end);
+    const last = regions[regions.length - 1];
+    if (last && s <= last.end) {
+      last.end = Math.max(last.end, e);
+      last.matches.push(m);
+    } else {
+      regions.push({ start: s, end: e, matches: [m] });
+    }
+  }
+  return regions;
+}
+
+function sentenceBounds(text, start, end) {
+  let s = start;
+  while (s > 0) {
+    const ch = text[s - 1];
+    if (ch === '\n' || ch === '.' || ch === '!' || ch === '?' || ch === '…') break;
+    s -= 1;
+  }
+  while (s < start && /\s/.test(text[s])) s += 1;
+  let e = end;
+  while (e < text.length) {
+    const ch = text[e];
+    if (ch === '\n') break;
+    e += 1;
+    if (ch === '.' || ch === '!' || ch === '?' || ch === '…') {
+      while (e < text.length && /["'”’)\]]/.test(text[e])) e += 1;
+      break;
+    }
+  }
+  return [s, e];
+}
+
+const EXAMPLE_DE = `Wir haben den Editor von Grund auf neu gebaut. Keine Anmeldung, kein Download, kein Stress — Text einfügen und schreiben. Ohne Schnörkel, ohne Ballast, ohne Fachjargon.
+
+Die Rezensentin las den Entwurf zweimal. Und genau das ist der ganze Punkt. Nenn es nicht Umbau — nenn es Rettung.
+
+Lass das einen Moment sacken. Du weißt es längst. Und das ist nicht wenig.
+
+Die Pointe: gelacht hat niemand. Und jetzt kommt der Clou: die Demo war Monate alt. Das Ergebnis? Beeindruckend.
+
+Ehrlich gesagt, das Changelog liest sowieso niemand. Wenn es um Sichtbarkeit geht, hilft nur Konsistenz. Tauchen wir ein in den Umbau.
+
+Der alte Importer ist tot, und niemand hat getrauert. Das Einzige, was zählt, ist die Bindung. Du musst mir nicht glauben.
+
+Wie sich herausstellt, war der Cache nie warm. Der kleine Kern passt in einen Kopf. Auf dieser Reise bleibt jeder Schritt sichtbar.
+
+Bereue ich den Launch? Fehlt mir der alte Importer?
+
+Vielleicht brauchte niemand den Importer. Vielleicht hat die Abkürzung verwirrt. Vielleicht war der Umbau ohnehin überfällig.
+
+Der Parser ist ein kleiner Automat. Der Renderer ist ein kleiner Automat.
+
+Der Launch brauchte drei Dinge: einen Blogpost, ein Demo-Video und eine Preisseite. Genau deshalb war der Export-Button so wichtig. Das Tool starb; die Daten nicht.
+
+Der ganzheitliche Ansatz verspricht nahtlosen Mehrwert. Der fertige Raum ist nicht nur ein Büro, sondern ein kleines Museum. Der Leerzustand ist keine Deko, sondern Orientierung.
+
+Es ist wichtig zu beachten, dass der Rollout in Stufen lief. Der stabile Zulauf ist ein Beweis für die Kuratierung. Community-Feedback spielt eine zentrale Rolle in jedem Release.
+
+Sie passten sich einer sich ständig wandelnden Landschaft an. Experten sind sich einig, dass der Wandel überfällig war. Trotz dieser Herausforderungen lieferte das Team weiter.
+
+Die Besucher kommen wieder, was die Anziehungskraft der Sammlung unterstreicht. Das Studio liegt eingebettet in einem umgebauten Speicher. Darüber hinaus sank die Ladezeit.
+
+Stand meines letzten Updates stand auf der Preisseite noch „bald“. Am Ende des Tages liest niemand das Protokoll. Niemand muss das Rad neu erfinden.
+
+Zusammenfassend lässt sich sagen, dass der Umbau sich gelohnt hat.
+
+Dieser Schlussabsatz ist bewusst gewöhnlich geschrieben, damit hier nichts aufleuchtet.`;
+
+const EXAMPLE_EN = `We rebuilt the editor from the ground up. No sign-ups, no downloads, no hassle — just paste your text and start writing. Everything runs locally in your browser.
+
+The reviewer read the draft twice. Did not flinch, did not blink, did not reach for the red pen. That's the whole review, honestly.
+
+Don't call it a rewrite — call it a rescue. The improvement is real, and it's not subtle. That loss is worth naming. Sit with that for a moment. The gains were modest, but that's not nothing.
+
+You already know the answer, of course. Consistency is the entire game, and the punchline is that nobody wants to hear it. The entire pitch is one sentence long.
+
+In this guide we delve into the redesign. It is important to note that the rollout happened in stages. Community feedback plays a pivotal role in every release. Experts argue that the shift was overdue.
+
+The studio is nestled in a converted warehouse. The finished space is not just an office, but a small museum. Visitors keep coming back, reflecting the appeal of the collection. The steady attendance is a testament to the curators.
+
+The empty state isn’t filler. It’s orientation.
+
+Despite these challenges, the team kept shipping. They adapted to an ever-evolving landscape. As of my last update, the pricing page still said “coming soon”.
+
+The parser is a tiny state machine. The renderer is a tiny state machine.
+
+I won't pretend the rollout was smooth. It turns out that nobody reads the changelog. Here is the whole secret. The small core still fits in your head. That's the part a schedule can't capture. It's the only estimate I trust. You don't have to take my word for it.
+
+The launch needed three things: a blog post, a demo video, and a pricing page. Here's the catch: the demo was recorded months earlier. Do I regret shipping it? Do I miss the old importer?
+
+The old importer is dead, and nobody mourned. That's why the export button mattered. The tool died; the data didn't.
+
+Maybe nobody needed the importer. Maybe the shortcut confused people. Maybe the redesign was overdue all along.
+
+This closing paragraph is deliberately ordinary, with no list patterns at all, so nothing here should light up.`;
+
+const EXAMPLES = { de: EXAMPLE_DE, en: EXAMPLE_EN, both: EXAMPLE_DE + '\n\n' + EXAMPLE_EN };
+
+// URL loading: the page URL's #fragment holds the article URL, and the text is
+// fetched through the Jina Reader proxy (https://r.jina.ai/) as plain text.
+// A direct fetch of the URL races alongside as a quiet fallback in case the
+// site serves open CORS headers and Jina fails.
+
+function normalizeUrl(raw) {
+  const url = raw.trim();
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (/^[\w.-]+\.[a-z]{2,}(?:[/?#:]|$)/i.test(url)) return 'https://' + url;
+  return '';
+}
+
+function urlFromFragment(fragment) {
+  let raw = fragment.startsWith('#') ? fragment.slice(1) : fragment;
+  if (!raw) return '';
+  try {
+    raw = decodeURIComponent(raw);
+  } catch (err) {
+    // Not valid percent-encoding — treat the fragment as a literal URL
+  }
+  return normalizeUrl(raw);
+}
+
+function fragmentFromUrl(url) {
+  return url ? '#' + encodeURI(url) : '';
+}
+
+// Tooltip text for a highlight: the pattern name, plus the chain item count
+// when the match has one. Shown on tap/click (title-attribute hover tooltips
+// don't exist on touch screens) and duplicated in the title attribute.
+function matchTipText(name, badgeTitle) {
+  return badgeTitle ? name + ' · ' + badgeTitle : name;
+}
+
+// Interface strings. The interface follows the selected pattern language;
+// "both" keeps the German interface, since German is this fork's default.
+const UI = {
+  de: {
+    title: 'LLM-Floskel-Marker',
+    h1: 'LLM-Floskeln <mark>markiert</mark>',
+    subtitle: 'Text einfügen — oder von einer URL laden — und Sätze werden markiert, die bekannten LLM-Floskeln entsprechen. Deutsch ist voreingestellt; die englischen Muster stammen aus Simon Willisons Original, samt der in Wikipedias <a href="https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing">Signs of AI writing</a> gesammelten Anzeichen. Ketten wie „kein X, kein Y“ bekommen ein Abzeichen mit der Anzahl ihrer Glieder; Tippen oder Überfahren zeigt die getroffene Floskel.',
+    langLabel: 'Sprache der Muster:',
+    langBoth: 'Beide',
+    detectText: { de: 'Der Text sieht deutsch aus.', en: 'Der Text sieht englisch aus.' },
+    detectSwitch: { de: 'Zu Deutsch wechseln', en: 'Zu English wechseln' },
+    detectDismiss: 'Ausblenden',
+    patterns: 'Muster',
+    patternsAllOn: n => '· alle ' + n + ' an',
+    patternsSomeOn: (on, n) => '· ' + on + ' von ' + n + ' an',
+    patternNote: 'Die Wikipedia-Gruppen sind an Wikipedias <a href="https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing">Signs of AI writing</a> angelehnt. Weitere Muster lassen sich oben im Skript in <code>PATTERNS_DE</code> bzw. <code>PATTERNS_EN</code> ergänzen.',
+    langHeading: { de: 'Deutsche Muster', en: 'Englische Muster' },
+    ticGroup: 'Rhetorische Tics',
+    urlPlaceholder: 'https://example.com/artikel — geladen über r.jina.ai',
+    loadUrl: 'URL laden',
+    urlFragmentFound: 'URL im #Fragment gefunden — „URL laden“ drücken, um sie zu holen.',
+    urlNeedsFull: 'Bitte eine vollständige URL angeben, z. B. https://example.com/artikel',
+    urlFetching: url => 'Hole ' + url + ' über r.jina.ai …',
+    urlLoaded: (n, url) => n.toLocaleString('de-DE') + ' Zeichen von ' + url + ' geladen',
+    urlFailed: msg => 'Diese URL konnte nicht geladen werden: ' + msg,
+    inputPlaceholder: 'Text hier einfügen …',
+    loadExample: 'Beispiel laden',
+    clear: 'Leeren',
+    highlightsOnly: 'Nur die Markierungen zeigen',
+    emptyHint: 'Oben Text einfügen — die Analyse läuft beim Tippen mit.',
+    outputHeading: 'Markierter Text',
+    legendSentence: 'markierter Satz',
+    legendHit: 'Muster-Treffer',
+    legendBadge: 'Anzahl der Kettenglieder',
+    matchHeading: 'Treffer',
+    statMatches: n => '<strong>' + n + '</strong> ' + (n === 1 ? 'Treffer' : 'Treffer'),
+    statSentences: n => '<strong>' + n + '</strong> markierte ' + (n === 1 ? 'Stelle' : 'Stellen'),
+    statItems: n => '<strong>' + n + '</strong> ' + (n === 1 ? 'Kettenglied' : 'Kettenglieder'),
+    patternMatches: n => n + ' ' + (n === 1 ? 'Treffer' : 'Treffer'),
+    patternOff: 'aus',
+    wordsHidden: n => '⋯ ' + n + ' ' + (n === 1 ? 'Wort' : 'Wörter') + ' ausgeblendet ⋯',
+    themeAuto: 'Design: automatisch',
+    themeLight: 'Design: hell',
+    themeDark: 'Design: dunkel',
+    credit: 'Fork von <a href="https://tools.simonwillison.net/llm-cliche-highlighter">LLM cliché highlighter</a> von Simon Willison (<a href="https://github.com/simonw/tools">simonw/tools</a>, Apache&nbsp;2.0), erweitert um einen deutschen Musterkatalog.',
+    testsRunning: 'Selbsttests: laufen …',
+    testsPassed: n => 'Selbsttests: alle ' + n + ' bestanden',
+    testsFailed: (ok, bad) => 'Selbsttests: ' + ok + ' bestanden, ' + bad + ' fehlgeschlagen',
+    testHowto: 'Headless mit Node ausführen: Der Einzeiler unten liest diese Datei von stdin, schneidet den Code zwischen den „impl“- und „tests“-Markerkommentaren heraus, eval()t ihn und gibt eine Bilanz aus. Der Exit-Code ist 1, wenn etwas fehlschlägt.'
+  },
+  en: {
+    title: 'LLM cliché highlighter',
+    h1: 'LLM cliché <mark>highlighter</mark>',
+    subtitle: 'Paste text below — or load it from a URL — and it highlights sentences that match known LLM clichés, including the tells catalogued in Wikipedia’s <a href="https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing">Signs of AI writing</a> guide. This fork adds a German pattern set, which is the default. Chain patterns like “no X, no Y” get a badge counting their items; tap or hover a highlight to see which cliché it hit.',
+    langLabel: 'Pattern language:',
+    langBoth: 'Both',
+    detectText: { de: 'This text looks German.', en: 'This text looks English.' },
+    detectSwitch: { de: 'Switch to Deutsch', en: 'Switch to English' },
+    detectDismiss: 'Dismiss',
+    patterns: 'Patterns',
+    patternsAllOn: n => '· all ' + n + ' on',
+    patternsSomeOn: (on, n) => '· ' + on + ' of ' + n + ' on',
+    patternNote: 'The Wikipedia groups are adapted from Wikipedia’s <a href="https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing">Signs of AI writing</a> guide. More patterns can be added to the <code>PATTERNS_DE</code> and <code>PATTERNS_EN</code> arrays at the top of the script.',
+    langHeading: { de: 'German patterns', en: 'English patterns' },
+    ticGroup: 'Rhetorical tics',
+    urlPlaceholder: 'https://example.com/article — fetched via r.jina.ai',
+    loadUrl: 'Load URL',
+    urlFragmentFound: 'URL found in the #fragment — press “Load URL” to fetch it.',
+    urlNeedsFull: 'Enter a full URL, e.g. https://example.com/article',
+    urlFetching: url => 'Fetching ' + url + ' via r.jina.ai …',
+    urlLoaded: (n, url) => 'Loaded ' + n.toLocaleString('en-US') + ' characters from ' + url,
+    urlFailed: msg => 'Could not fetch that URL: ' + msg,
+    inputPlaceholder: 'Paste your text here…',
+    loadExample: 'Load example',
+    clear: 'Clear',
+    highlightsOnly: 'Show just the highlights',
+    emptyHint: 'Paste some text above — analysis runs as you type.',
+    outputHeading: 'Highlighted text',
+    legendSentence: 'flagged sentence',
+    legendHit: 'pattern match',
+    legendBadge: 'chain item count',
+    matchHeading: 'Matches',
+    statMatches: n => '<strong>' + n + '</strong> ' + (n === 1 ? 'match' : 'matches'),
+    statSentences: n => '<strong>' + n + '</strong> flagged ' + (n === 1 ? 'sentence' : 'sentences'),
+    statItems: n => '<strong>' + n + '</strong> chain ' + (n === 1 ? 'item' : 'items'),
+    patternMatches: n => n + ' ' + (n === 1 ? 'match' : 'matches'),
+    patternOff: 'off',
+    wordsHidden: n => '⋯ ' + n + ' ' + (n === 1 ? 'word' : 'words') + ' hidden ⋯',
+    themeAuto: 'Theme: auto',
+    themeLight: 'Theme: light',
+    themeDark: 'Theme: dark',
+    credit: 'Fork of <a href="https://tools.simonwillison.net/llm-cliche-highlighter">LLM cliché highlighter</a> by Simon Willison (<a href="https://github.com/simonw/tools">simonw/tools</a>, Apache&nbsp;2.0), extended with a German pattern set.',
+    testsRunning: 'Self-tests: running…',
+    testsPassed: n => 'Self-tests: all ' + n + ' passed',
+    testsFailed: (ok, bad) => 'Self-tests: ' + ok + ' passed, ' + bad + ' failed',
+    testHowto: 'Run these headlessly with Node: the one-liner below reads this file on stdin, extracts the code between the “impl” and “tests” start/end marker comments in the script, eval()s it, and prints a pass/fail tally. Exit code is 1 if anything fails.'
+  }
+};
+
+function uiLangFor(lang) {
+  return lang === 'en' ? 'en' : 'de';
+}
+// ==== impl end ====
+
+const input = document.getElementById('input');
+const patternListEl = document.getElementById('pattern-list');
+const patternSummaryMeta = document.getElementById('pattern-summary-meta');
+const statsEl = document.getElementById('stats');
+const emptyHint = document.getElementById('empty-hint');
+const outputSection = document.getElementById('output-section');
+const outputEl = document.getElementById('output');
+const matchSection = document.getElementById('match-section');
+const matchListEl = document.getElementById('matches');
+const highlightsToggle = document.getElementById('highlights-only');
+const testSummary = document.getElementById('test-summary');
+const testList = document.getElementById('test-list');
+const urlForm = document.getElementById('url-form');
+const urlInput = document.getElementById('url-input');
+const loadUrlBtn = document.getElementById('load-url');
+const urlStatus = document.getElementById('url-status');
+const langOptions = document.getElementById('lang-options');
+const themeToggle = document.getElementById('theme-toggle');
+const detectHint = document.getElementById('detect-hint');
+const detectHintText = document.getElementById('detect-hint-text');
+const detectSwitch = document.getElementById('detect-switch');
+const detectDismiss = document.getElementById('detect-dismiss');
+let countEls = {};
+let currentMatches = [];
+let testResults = null;
+
+const STORAGE_KEY = 'llm_cliches_last_text';
+const LANG_KEY = 'llm_cliches_lang';
+const THEME_KEY = 'llm_cliches_theme';
+const THEMES = ['auto', 'light', 'dark'];
+
+// Pattern ids the reader has switched off. Kept across language switches so
+// turning "Doppelpunkt in den Dreiklang" off survives a trip to English.
+const switchedOff = new Set();
+
+let lang = DEFAULT_LANG;
+let t = UI[uiLangFor(lang)];
+let theme = 'auto';
+let lastStoredText = null;
+let dismissedDetect = null;
+
+function readStored(key) {
+  try {
+    return window.localStorage.getItem(key) || '';
+  } catch (err) {
+    return '';
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (err) {
+    // localStorage unavailable (e.g. sandboxed preview); persistence is off
+  }
+}
+
+function storeText(text) {
+  if (text === lastStoredText) return;
+  lastStoredText = text;
+  writeStored(STORAGE_KEY, text);
+}
+
+// ---- Language and theme -------------------------------------------------
+
+function applyTheme() {
+  if (theme === 'auto') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+  themeToggle.textContent = theme === 'light' ? t.themeLight
+    : theme === 'dark' ? t.themeDark : t.themeAuto;
+}
+
+function applyUi() {
+  t = UI[uiLangFor(lang)];
+  document.documentElement.lang = uiLangFor(lang);
+  document.title = t.title;
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    el.textContent = t[el.dataset.i18n];
+  }
+  for (const el of document.querySelectorAll('[data-i18n-html]')) {
+    el.innerHTML = t[el.dataset.i18nHtml];
+  }
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
+    el.placeholder = t[el.dataset.i18nPlaceholder];
+  }
+  applyTheme();
+  renderTestSummary();
+}
+
+function setLang(next, { rerun = true } = {}) {
+  if (!LANGS.includes(next)) return;
+  lang = next;
+  writeStored(LANG_KEY, lang);
+  const box = langOptions.querySelector('input[value="' + lang + '"]');
+  if (box) box.checked = true;
+  applyUi();
+  buildPatternList();
+  if (rerun) run();
+}
+
+langOptions.addEventListener('change', event => {
+  if (event.target.name === 'lang') {
+    dismissedDetect = null;
+    setLang(event.target.value);
+  }
+});
+
+themeToggle.addEventListener('click', () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  writeStored(THEME_KEY, theme);
+  applyTheme();
+});
+
+detectSwitch.addEventListener('click', () => {
+  const target = detectSwitch.dataset.lang;
+  if (target) setLang(target);
+});
+
+detectDismiss.addEventListener('click', () => {
+  dismissedDetect = detectSwitch.dataset.lang || null;
+  detectHint.hidden = true;
+});
+
+function updateDetectHint(text) {
+  const guess = lang === 'both' ? null : detectLanguage(text);
+  if (!guess || guess === lang || guess === dismissedDetect) {
+    detectHint.hidden = true;
+    return;
+  }
+  detectHintText.textContent = t.detectText[guess];
+  detectSwitch.textContent = t.detectSwitch[guess];
+  detectSwitch.dataset.lang = guess;
+  detectHint.hidden = false;
+}
+
+// ---- Setup --------------------------------------------------------------
+
+const storedLang = readStored(LANG_KEY);
+if (LANGS.includes(storedLang)) lang = storedLang;
+const storedTheme = readStored(THEME_KEY);
+if (THEMES.includes(storedTheme)) theme = storedTheme;
+
+setLang(lang, { rerun: false });
+
+document.getElementById('example').addEventListener('click', () => {
+  input.value = EXAMPLES[lang];
+  dismissedDetect = null;
+  run();
+});
+
+document.getElementById('clear').addEventListener('click', () => {
+  input.value = '';
+  run();
+  input.focus();
+});
+
+highlightsToggle.addEventListener('change', run);
+
+// Tap/click tooltip for highlights. The title attribute covers mouse hover,
+// but touch screens have no hover, so tapping a highlight (or its badge)
+// shows the same information in a floating tip. Tapping it again, tapping
+// elsewhere, or scrolling dismisses it.
+const tipEl = document.createElement('div');
+tipEl.className = 'hit-tip';
+tipEl.setAttribute('role', 'tooltip');
+tipEl.hidden = true;
+document.body.append(tipEl);
+let tipTarget = null;
+
+function hideTip() {
+  if (tipEl.hidden) return;
+  tipEl.hidden = true;
+  tipTarget = null;
+}
+
+function showTip(markEl) {
+  const m = currentMatches[Number(markEl.id.slice('hit-'.length))];
+  if (!m) return;
+  tipEl.textContent = matchTipText(patternsById[m.patternId].name, m.badgeTitle);
+  tipEl.hidden = false;
+  tipTarget = markEl;
+  const rect = markEl.getBoundingClientRect();
+  const viewWidth = document.documentElement.clientWidth;
+  let left = rect.left + rect.width / 2 - tipEl.offsetWidth / 2;
+  left = Math.max(8, Math.min(left, viewWidth - tipEl.offsetWidth - 8));
+  let top = rect.top - tipEl.offsetHeight - 8;
+  if (top < 8) top = rect.bottom + 8;
+  tipEl.style.left = window.scrollX + left + 'px';
+  tipEl.style.top = window.scrollY + top + 'px';
+}
+
+outputEl.addEventListener('click', event => {
+  const badge = event.target.closest('.badge');
+  const markEl = badge
+    ? badge.previousElementSibling
+    : event.target.closest('mark.hit');
+  if (!markEl || !markEl.matches('mark.hit')) {
+    hideTip();
+    return;
+  }
+  if (markEl === tipTarget) {
+    hideTip();
+  } else {
+    showTip(markEl);
+  }
+});
+
+document.addEventListener('click', event => {
+  if (tipEl.hidden || event.target.closest('#output')) return;
+  hideTip();
+});
+
+window.addEventListener('scroll', hideTip, { passive: true });
+
+function setUrlStatus(message, isError) {
+  urlStatus.hidden = !message;
+  urlStatus.textContent = message || '';
+  urlStatus.classList.toggle('is-error', Boolean(isError));
+}
+
+function prefillFromFragment() {
+  const url = urlFromFragment(window.location.hash);
+  if (!url) return;
+  urlInput.value = url;
+  setUrlStatus(t.urlFragmentFound);
+}
+
+prefillFromFragment();
+
+window.addEventListener('hashchange', prefillFromFragment);
+
+urlForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const url = normalizeUrl(urlInput.value);
+  if (!url) {
+    setUrlStatus(t.urlNeedsFull, true);
+    return;
+  }
+  urlInput.value = url;
+  history.replaceState(null, '', fragmentFromUrl(url));
+  loadUrlBtn.disabled = true;
+  setUrlStatus(t.urlFetching(url));
+  const fetchText = async (target, options) => {
+    const response = await fetch(target, options);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return response.text();
+  };
+  const jinaPromise = fetchText('https://r.jina.ai/' + url, {
+    headers: { 'X-Return-Format': 'text' }
+  });
+  const directPromise = fetchText(url);
+  directPromise.catch(() => {});
+  try {
+    let text;
+    try {
+      text = await jinaPromise;
+    } catch (jinaErr) {
+      try {
+        text = await directPromise;
+      } catch (directErr) {
+        throw jinaErr;
+      }
+    }
+    input.value = text;
+    dismissedDetect = null;
+    run();
+    setUrlStatus(t.urlLoaded(text.length, url));
+  } catch (err) {
+    setUrlStatus(t.urlFailed(err && err.message ? err.message : err), true);
+  } finally {
+    loadUrlBtn.disabled = false;
+  }
+});
+
+let timer = null;
+input.addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(run, 150);
+});
+
+input.value = readStored(STORAGE_KEY);
+
+run();
+
+function buildPatternList() {
+  patternListEl.innerHTML = '';
+  countEls = {};
+  let lastLang = null;
+  let lastGroup = null;
+  for (const p of patternsFor(lang)) {
+    if (lang === 'both' && p.lang !== lastLang) {
+      const heading = document.createElement('p');
+      heading.className = 'pattern-lang';
+      heading.textContent = t.langHeading[p.lang];
+      patternListEl.append(heading);
+      lastLang = p.lang;
+      lastGroup = null;
+    }
+    const groupName = p.group || t.ticGroup;
+    if (groupName !== lastGroup) {
+      const heading = document.createElement('p');
+      heading.className = 'pattern-group';
+      heading.textContent = groupName;
+      patternListEl.append(heading);
+      lastGroup = groupName;
+    }
+    const wrap = document.createElement('div');
+    const label = document.createElement('label');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = !switchedOff.has(p.id);
+    box.dataset.pattern = p.id;
+    box.addEventListener('change', () => {
+      if (box.checked) switchedOff.delete(p.id);
+      else switchedOff.add(p.id);
+      run();
+    });
+    const name = document.createElement('span');
+    name.className = 'pattern-name';
+    name.textContent = p.name;
+    const count = document.createElement('span');
+    count.className = 'pattern-count';
+    countEls[p.id] = count;
+    label.append(box, name, count);
+    const desc = document.createElement('p');
+    desc.className = 'pattern-desc';
+    desc.textContent = p.description;
+    wrap.append(label, desc);
+    patternListEl.append(wrap);
+  }
+  const note = document.createElement('p');
+  note.className = 'pattern-note';
+  note.innerHTML = t.patternNote;
+  patternListEl.append(note);
+}
+
+function run() {
+  hideTip();
+  const text = input.value;
+  storeText(text);
+  updateDetectHint(text);
+  const active = patternsFor(lang);
+  const hasText = text.trim().length > 0;
+  const enabled = new Set(
+    [...patternListEl.querySelectorAll('input:checked')].map(b => b.dataset.pattern)
+  );
+  patternSummaryMeta.textContent = enabled.size === active.length
+    ? t.patternsAllOn(active.length)
+    : t.patternsSomeOn(enabled.size, active.length);
+  emptyHint.hidden = hasText;
+  outputSection.hidden = !hasText;
+  if (!hasText) {
+    matchSection.hidden = true;
+    statsEl.hidden = true;
+    statsEl.innerHTML = '';
+    for (const p of active) countEls[p.id].textContent = '';
+    return;
+  }
+
+  const { matches, perPattern } = collectMatches(text, enabled);
+  const regions = buildRegions(text, matches);
+  currentMatches = matches;
+
+  renderOutput(text, regions, highlightsToggle.checked);
+  renderMatches(text, matches);
+  renderStats(matches, regions);
+  for (const p of active) {
+    countEls[p.id].textContent = enabled.has(p.id)
+      ? t.patternMatches(perPattern[p.id])
+      : t.patternOff;
+  }
+}
+
+function renderOutput(text, regions, onlyHighlights) {
+  if (!onlyHighlights || regions.length === 0) {
+    outputEl.innerHTML = renderRegions(text, 0, text.length, regions);
+    return;
+  }
+  const windows = buildWindows(text, regions);
+  let html = '';
+  let prev = 0;
+  for (const w of windows) {
+    html += skipMarker(text, prev, w.start);
+    html += renderRegions(text, w.start, w.end, w.regions);
+    prev = w.end;
+  }
+  html += skipMarker(text, prev, text.length);
+  outputEl.innerHTML = html;
+}
+
+function renderRegions(text, from, to, regions) {
+  let html = '';
+  let pos = from;
+  for (const region of regions) {
+    html += esc(text.slice(pos, region.start));
+    html += '<span class="flagged">';
+    const points = new Set([region.start, region.end]);
+    for (const m of region.matches) {
+      points.add(m.start);
+      points.add(m.end);
+    }
+    const sortedPoints = Array.from(points).sort((a, b) => a - b);
+    const rendered = new Set();
+    for (let i = 0; i + 1 < sortedPoints.length; i += 1) {
+      const start = sortedPoints[i];
+      const end = sortedPoints[i + 1];
+      if (end <= start) continue;
+      const active = region.matches
+        .filter(m => m.start <= start && m.end >= end)
+        .sort((a, b) => (b.end - b.start) - (a.end - a.start));
+      let segment = esc(text.slice(start, end));
+      for (const m of active) {
+        const id = rendered.has(m.id) ? '' : ' id="hit-' + m.id + '"';
+        segment = '<mark class="hit"' + id + ' title="' + esc(matchTipText(patternsById[m.patternId].name, m.badgeTitle)) + '">' + segment + '</mark>';
+        rendered.add(m.id);
+      }
+      html += segment;
+      for (const m of region.matches) {
+        if (m.end === end && m.badge != null) {
+          html += '<span class="badge" title="' + esc(m.badgeTitle || '') + '">' + esc(m.badge) + '</span>';
+        }
+      }
+    }
+    html += '</span>';
+    pos = region.end;
+  }
+  html += esc(text.slice(pos, to));
+  return html;
+}
+
+function skipMarker(text, from, to) {
+  if (to <= from) return '';
+  const n = countWords(text.slice(from, to));
+  if (n === 0) return '';
+  return '<span class="skip">' + esc(t.wordsHidden(n)) + '</span>';
+}
+
+function renderMatches(text, matches) {
+  matchSection.hidden = matches.length === 0;
+  matchListEl.innerHTML = '';
+  for (const m of matches) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.className = 'jump';
+    btn.type = 'button';
+    btn.textContent = '„' + snippet(text.slice(m.start, m.end)) + '“';
+    btn.addEventListener('click', () => jumpTo(m.id));
+    li.append(btn);
+    const meta = document.createElement('span');
+    meta.className = 'match-meta';
+    const parts = [patternsById[m.patternId].name];
+    if (m.badgeTitle) parts.push(m.badgeTitle);
+    meta.textContent = ' — ' + parts.join(' · ');
+    li.append(meta);
+    matchListEl.append(li);
+  }
+}
+
+function renderStats(matches, regions) {
+  statsEl.hidden = false;
+  const items = matches.reduce((n, m) => n + (m.count || 0), 0);
+  statsEl.innerHTML =
+    '<span>' + t.statMatches(matches.length) + '</span>' +
+    '<span>' + t.statSentences(regions.length) + '</span>' +
+    '<span>' + t.statItems(items) + '</span>';
+}
+
+function jumpTo(id) {
+  const el = document.getElementById('hit-' + id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('pulse');
+  setTimeout(() => el.classList.remove('pulse'), 1200);
+}
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function snippet(s) {
+  const clean = s.replace(/\s+/g, ' ').trim();
+  return clean.length > 90 ? clean.slice(0, 87) + '…' : clean;
+}
+
+// ---- Self-tests ----
+// These run in the browser shortly after load and report in the footer. They can
+// also be run headless with the Node one-liner shown inside the expanded
+// test-results footer.
+// ==== tests start ====
+
+const selfTests = [];
+
+function test(name, fn) {
+  selfTests.push({ name, fn });
+}
+
+function expectEqual(actual, expected, label) {
+  const a = JSON.stringify(actual);
+  const b = JSON.stringify(expected);
+  if (a !== b) throw new Error(label + ': expected ' + b + ', got ' + a);
+}
+
+function caseName(id, sample) {
+  const clean = sample.replace(/\s+/g, ' ').trim();
+  const short = clean.length > 44 ? clean.slice(0, 41) + '…' : clean;
+  return id + ' · “' + short + '”';
+}
+
+const PATTERN_CASES_DE = [
+  ['de-kein-kette', 'Keine Anmeldung, kein Download, kein Stress – einfach loslegen.', 1, [3]],
+  ['de-kein-kette', 'Der Plan hat keine versteckten Kosten und keine Mindestlaufzeit.', 1, [2]],
+  ['de-kein-kette', 'kein Schnickschnack; kein Ballast', 1, [2]],
+  ['de-kein-kette', 'KEINE GEBÜHREN, KEINE VERTRÄGE, KEINE ÜBERRASCHUNGEN', 1, [3]],
+  ['de-kein-kette', 'Hier gibt es keinen Haken, ehrlich.', 0, []],
+  ['de-kein-kette', 'Keine Anmeldung, kein Download.\nKeine Werbung hier.', 1, [2]],
+  ['de-ohne-kette', 'Ohne Schnörkel, ohne Ballast, ohne Fachjargon.', 1, [3]],
+  ['de-ohne-kette', 'Ohne Anmeldung und ohne Abo.', 1, [2]],
+  ['de-ohne-kette', 'Ohne Fleiß kein Preis.', 0, []],
+  ['de-ganzer-punkt', 'Und genau das ist der ganze Punkt.', 1],
+  ['de-ganzer-punkt', 'Das war der eigentliche Kniff.', 1],
+  ['de-ganzer-punkt', 'Genau darum geht es.', 1],
+  ['de-ganzer-punkt', 'Das ist der ganze Kuchen.', 0],
+  ['de-nenn-es-nicht', 'Nenn es nicht Umbau – nenn es Rettung.', 1],
+  ['de-nenn-es-nicht', 'Nennen Sie es nicht Zufall, nennen Sie es Vorbereitung.', 1],
+  ['de-nenn-es-nicht', 'Nenn es nicht so.', 0],
+  ['de-sacken-lassen', 'Lass das einen Moment sacken.', 1],
+  ['de-sacken-lassen', 'Lass das kurz wirken.', 1],
+  ['de-sacken-lassen', 'Bleib einen Moment bei diesem Unbehagen.', 1],
+  ['de-sacken-lassen', 'Lass uns weitermachen.', 0],
+  ['de-du-weisst-es', 'Du weißt es längst.', 1],
+  ['de-du-weisst-es', 'Im Grunde weißt du es bereits.', 1],
+  ['de-du-weisst-es', 'Du kennst die Antwort schon.', 1],
+  ['de-du-weisst-es', 'Weißt du, wie das Skript läuft?', 0],
+  ['de-nicht-wenig', 'Und das ist nicht wenig.', 1],
+  ['de-nicht-wenig', 'Das ist nicht nichts.', 1],
+  ['de-nicht-wenig', 'Das ist nicht wichtig.', 0],
+  ['de-pointe', 'Die Pointe: gelacht hat niemand.', 1],
+  ['de-pointe', 'Die Pointe ist, dass es niemanden interessiert.', 1],
+  ['de-pointe', 'Der Witz daran? Es lief längst.', 1],
+  ['de-pointe', 'Er hat die Pointe komplett vergessen.', 0],
+  ['de-haken', 'Und jetzt kommt der Clou: niemand hat geklickt.', 1],
+  ['de-haken', 'Der Haken: es kostet Zeit.', 1],
+  ['de-haken', 'Das Beste daran? Es ist gratis.', 1],
+  ['de-haken', 'Hier ist der Türcode.', 0],
+  ['de-nominalfrage', 'Das Ergebnis? Beeindruckend.', 1],
+  ['de-nominalfrage', 'Die Folge? Ein Rückruf.', 1],
+  ['de-nominalfrage', 'Wie lautete das Ergebnis?', 0],
+  ['de-ehrlichkeit', 'Ehrlich gesagt, die Doku liest niemand.', 1],
+  ['de-ehrlichkeit', 'Seien wir ehrlich: es war knapp.', 1],
+  ['de-ehrlichkeit', 'Machen wir uns nichts vor.', 1],
+  ['de-ehrlichkeit', 'Sie hat ehrlich geantwortet.', 0],
+  ['de-wenn-es-darum-geht', 'Wenn es darum geht, Vertrauen aufzubauen, hilft nur Klarheit.', 1],
+  ['de-wenn-es-darum-geht', 'Wenn es um Sichtbarkeit geht, braucht es Konsistenz.', 1],
+  ['de-wenn-es-darum-geht', 'Wenn es regnet, bleiben wir drinnen.', 0],
+  ['de-eintauchen', 'Tauchen wir ein in die Details.', 1],
+  ['de-eintauchen', 'Lass uns einen genaueren Blick darauf werfen.', 1],
+  ['de-eintauchen', 'In die Welt der Klimadaten führt kein kurzer Weg.', 1],
+  ['de-eintauchen', 'Wir sind ins kalte Wasser gesprungen.', 0],
+  ['de-ist-tot', 'Das klassische Code-Review ist tot.', 1],
+  ['de-ist-tot', 'Der alte Importer ist tot – lang lebe der Importer.', 2],
+  ['de-ist-tot', 'Er stellte sich tot, bis der Bär weg war.', 0],
+  ['de-einzige-was-zaehlt', 'Das Einzige, was zählt, ist die Bindung.', 1],
+  ['de-einzige-was-zaehlt', 'Das einzige Werkzeug, dem ich traue, ist der Debugger.', 1],
+  ['de-einzige-was-zaehlt', 'Sie war die einzige Entwicklerin im Dienst.', 0],
+  ['de-glaub-mir-nicht', 'Du musst mir nicht glauben.', 1],
+  ['de-glaub-mir-nicht', 'Nimm mich nicht beim Wort.', 1],
+  ['de-glaub-mir-nicht', 'Er hat sein Wort gehalten.', 0],
+  ['de-stellt-sich-heraus', 'Wie sich herausstellt, war der Cache nie warm.', 1],
+  ['de-stellt-sich-heraus', 'Es stellte sich heraus, dass niemand getestet hat.', 1],
+  ['de-stellt-sich-heraus', 'Sie stellt jede Woche solide Arbeit ab.', 0],
+  ['de-funktioniert-einfach', 'Der Entwurf passt in einen Kopf.', 1],
+  ['de-funktioniert-einfach', 'Es funktioniert einfach.', 1],
+  ['de-funktioniert-einfach', 'Sinnvolle Standardwerte sparen Konfiguration.', 1],
+  ['de-funktioniert-einfach', 'Der Helm passt auf seinen Kopf.', 0],
+  ['de-stapelfragen', 'Weiß ich, wie es funktioniert? Wo es bricht? Welche Ecken es abschneidet?', 1, [3]],
+  ['de-stapelfragen', 'War es das wert? Würde ich es wieder tun?', 1, [2]],
+  ['de-stapelfragen', 'Hat es funktioniert? Ja, und wie.', 0, []],
+  ['de-satzanaphora', 'Vielleicht brauchte es niemand. Vielleicht war das Timing falsch. Vielleicht beides.', 1, [3]],
+  ['de-satzanaphora', 'Vielleicht brauchte es niemand. Vielleicht war das Timing falsch.', 0, []],
+  ['de-satzanaphora', 'Der Parser ist klein. Der Renderer ist klein. Der Scheduler ist klein.', 0, []],
+  ['de-echo', 'Ein Warenkorb ist ein Objekt im System. Ein Chatraum ist ein Objekt im System.', 1, [2]],
+  ['de-echo', 'Der Parser ist ein kleiner Automat. Der Renderer ist ein kleiner Automat. Der Scheduler ist ein kleiner Automat.', 1, [3]],
+  ['de-echo', 'Der Parser ist schnell. Die Tests sind langsam.', 0, []],
+  ['de-doppelpunkt-dreiklang', 'Der Fix braucht drei Dinge: eigene Ports, eigene Prozesse und eigenen Zustand.', 1],
+  ['de-doppelpunkt-dreiklang', 'Jeder Dienst bekommt alles eigene: Ports, Prozesse, lokalen Zustand.', 1],
+  ['de-doppelpunkt-dreiklang', 'Das Rezept braucht Mehl, Butter und Zucker.', 0],
+  ['de-doppelpunkt-dreiklang', 'Hinweis: Die Option ist standardmäßig aus.', 0],
+  ['de-genau-deshalb', 'Genau deshalb war der Export-Button so wichtig.', 1],
+  ['de-genau-deshalb', 'Darum hat jede Konversation gezählt.', 1],
+  ['de-genau-deshalb', 'Deshalb gingen wir früher.', 0],
+  ['de-nachgestellte-negation', 'Das Tool starb; die Daten nicht.', 1],
+  ['de-nachgestellte-negation', 'Lesen lief meist, Schreiben nicht.', 1],
+  ['de-nachgestellte-negation', 'Vielleicht auch nicht.', 1],
+  ['de-nachgestellte-negation', 'Der Test lief und der Build war grün.', 0],
+  ['de-reise', 'Auf dieser Reise bleibt jeder Schritt sichtbar.', 1],
+  ['de-reise', 'Die Reise beginnt mit einem Atemzug.', 1],
+  ['de-reise', 'Die Reise nach Rom dauerte zwei Tage.', 0],
+  ['de-ki-vokabular', 'Der ganzheitliche Ansatz verspricht nahtlosen Mehrwert.', 3],
+  ['de-ki-vokabular', 'Ein maßgeschneidertes, wegweisendes Herzstück.', 3],
+  ['de-ki-vokabular', 'Der Bericht war gründlich und gut gegliedert.', 0],
+  ['de-nicht-nur-sondern', 'Das ist nicht nur ein Werkzeug, sondern eine Haltung.', 1],
+  ['de-nicht-nur-sondern', 'Es ist kein Bug – es ist ein Feature.', 1],
+  ['de-nicht-nur-sondern', 'Weder schnell noch zuverlässig.', 1],
+  ['de-nicht-nur-sondern', 'Er hat es nicht gekauft.', 0],
+  ['de-nicht-sondern', 'Der Leerzustand ist keine Deko, sondern Orientierung.', 1],
+  ['de-nicht-sondern', 'Der Leerzustand ist keine Deko. Er ist Orientierung.', 1],
+  ['de-nicht-sondern', 'Es ist nicht nur schnell, sondern auch günstig.', 0],
+  ['de-nicht-sondern', 'Sie war nicht sicher, ob der Plan passt.', 0],
+  ['de-wichtig-zu-beachten', 'Es ist wichtig zu beachten, dass Timing zählt.', 1],
+  ['de-wichtig-zu-beachten', 'Es sei angemerkt, dass sich das 2020 geändert hat.', 1],
+  ['de-wichtig-zu-beachten', 'Dabei gilt es zu bedenken, wer profitiert.', 1],
+  ['de-wichtig-zu-beachten', 'Bitte beachten Sie den Türcode.', 0],
+  ['de-zeugnis', 'Das Gebäude ist ein Zeugnis für den Nachkriegsoptimismus.', 1],
+  ['de-zeugnis', 'Ihre Laufbahn ist ein Beweis für Beharrlichkeit.', 1],
+  ['de-zeugnis', 'Die Zahlen zeugen von Wachstum.', 1],
+  ['de-zeugnis', 'Er las aus dem Alten Testament.', 0],
+  ['de-entscheidende-rolle', 'Freiwillige spielen eine entscheidende Rolle im Programm.', 1],
+  ['de-entscheidende-rolle', 'Feedback spielt dabei eine zentrale Rolle.', 1],
+  ['de-entscheidende-rolle', 'Er spielt die Rolle des Schurken.', 0],
+  ['de-landschaft', 'Die sich ständig wandelnde Landschaft des Handels.', 1],
+  ['de-landschaft', 'In der heutigen schnelllebigen Welt ist Aufmerksamkeit knapp.', 1],
+  ['de-landschaft', 'Im digitalen Zeitalter zählt Tempo.', 1],
+  ['de-landschaft', 'Die Landschaft vor dem Fenster war grau.', 0],
+  ['de-experten', 'Experten sind sich einig, dass die Regel gescheitert ist.', 1],
+  ['de-experten', 'Einige Kritiker merken an, dass die Qualität sinkt.', 1],
+  ['de-experten', 'Studien zeigen eine starke Nachfrage.', 1],
+  ['de-experten', 'Dr. Chen argumentierte in ihrem Aufsatz das Gegenteil.', 0],
+  ['de-herausforderungen', 'Trotz dieser Herausforderungen ging das Wachstum weiter.', 1],
+  ['de-herausforderungen', 'Die Branche steht vor zahlreichen Herausforderungen.', 1],
+  ['de-herausforderungen', 'Es bleibt abzuwarten, ob es hält.', 1],
+  ['de-herausforderungen', 'Nur die Zeit wird es zeigen.', 1],
+  ['de-herausforderungen', 'Der Aufstieg war eine Herausforderung.', 0],
+  ['de-partizip-schwanz', 'Die Brücke öffnete im Juni, was die Investitionen der Stadt unterstreicht.', 1],
+  ['de-partizip-schwanz', 'Der Umsatz verdoppelte sich, wodurch die Stärke der Marke deutlich wird.', 1],
+  ['de-partizip-schwanz', 'Sie markierte weiter Passagen in Gelb.', 0],
+  ['de-werbesprache', 'Das Gasthaus liegt eingebettet in ein stilles Tal.', 1],
+  ['de-werbesprache', 'Ein verborgenes Juwel mit atemberaubendem Blick.', 2],
+  ['de-werbesprache', 'Im Herzen der Altstadt.', 1],
+  ['de-werbesprache', 'Die Suppe war kräftig und herzhaft.', 0],
+  ['de-schlussfloskel', 'Zusammenfassend lässt sich sagen, dass es funktioniert.', 1],
+  ['de-schlussfloskel', 'Fazit: Es lohnt sich.', 1],
+  ['de-schlussfloskel', 'Unterm Strich bleibt Arbeit.', 1],
+  ['de-schlussfloskel', 'Das Fazit des Berichts war eindeutig.', 0],
+  ['de-uebergangsfloskeln', 'Darüber hinaus sinken die Kosten.', 1],
+  ['de-uebergangsfloskeln', 'Das Modul lädt schneller. Zudem spart es Speicher.', 1],
+  ['de-uebergangsfloskeln', 'Wir haben zudem getestet.', 0],
+  ['de-chatbot-reste', 'Stand meines letzten Updates war die API in der Beta.', 1],
+  ['de-chatbot-reste', 'Als KI-Sprachmodell kann ich keine Meinung haben.', 1],
+  ['de-chatbot-reste', 'Ich hoffe, das hilft dir weiter!', 1],
+  ['de-chatbot-reste', 'contentReference[oaicite:0]{index=0}', 2],
+  ['de-chatbot-reste', 'Das letzte Update kam am Dienstag.', 0],
+  ['de-anglizismen', 'Am Ende des Tages liest niemand das Protokoll.', 1],
+  ['de-anglizismen', 'Das bringt uns auf das nächste Level.', 1],
+  ['de-anglizismen', 'Das macht Sinn.', 1],
+  ['de-anglizismen', 'Am Ende der Straße wartete ein Taxi.', 0],
+  ['de-verbrauchte-metaphern', 'Niemand muss das Rad neu erfinden.', 1],
+  ['de-verbrauchte-metaphern', 'Das ist nur die Spitze des Eisbergs.', 1],
+  ['de-verbrauchte-metaphern', 'Der Elefant im Raum bleibt unbenannt.', 1],
+  ['de-verbrauchte-metaphern', 'Das Rad quietschte auf der Schotterpiste.', 0]
+];
+const PATTERN_CASES_EN = [
+  ['no-chain', 'No sign-ups, no downloads, no hassle — just paste and go.', 1, [3]],
+  ['no-chain', 'The plan has no hidden fees and no long-term contracts.', 1, [2]],
+  ['no-chain', 'No fluff, no filler, no jargon, no corporate buzzwords.', 1, [4]],
+  ['no-chain', 'There is no catch here, honestly.', 0, []],
+  ['no-chain', 'It ships with no bells and whistles, no fluff.', 1, [2]],
+  ['no-chain', 'No, no, I insist.', 0, []],
+  ['no-chain', 'no no no', 0, []],
+  ['no-chain', 'with no list patterns at all, so nothing lights up.', 0, []],
+  ['no-chain', 'NO FEES, NO CONTRACTS, NO SURPRISES', 1, [3]],
+  ['no-chain', 'no fluff; no filler', 1, [2]],
+  ['no-chain', 'no time, no money, no way to say no thanks', 1, [3]],
+  ['no-chain', 'no-code, no-fuss setup', 1, [2]],
+  ['no-chain', 'I know nothing, notice nothing.', 0, []],
+  ['no-chain', 'No fluff, no filler.\nNo ads here.', 1, [2]],
+  ['whole', "That's the whole point.", 1],
+  ['whole', 'This is the whole game, really.', 1],
+  ['whole', 'That was the whole pitch.', 1],
+  ['whole', 'The whole team showed up.', 0],
+  ['did-not-chain', 'Did not flinch, did not blink, did not apologize.', 1, [3]],
+  ['did-not-chain', "He didn't call and didn't write.", 1, [2]],
+  ['did-not-chain', 'She did not go.', 0, []],
+  ['did-not-chain', 'Did not know why, did not care.', 1, [2]],
+  ['dont-verb-it', "Don't call it a comeback. Call it a return.", 1],
+  ['dont-verb-it', 'Do not think of it as a burden. Think of it as fuel.', 1],
+  ['dont-verb-it', "Don't fear it. Name it.", 0],
+  ['dont-verb-it', 'Don\u2019t call it "luck." Call it preparation.', 1],
+  ['dont-verb-it', "Don't just read it — read it aloud.", 1],
+  ['dont-verb-it', "Don't overthink it.", 0],
+  ['sit-with', 'Sit with that for a moment.', 1],
+  ['sit-with', 'Just sit with it.', 1],
+  ['sit-with', 'She was sitting with the discomfort.', 1],
+  ['sit-with', 'Come sit with us at lunch.', 0],
+  ['already-know', 'You already know the answer.', 1],
+  ['already-know', 'Deep down, you already know.', 1],
+  ['already-know', 'If you already know Python, skip ahead.', 0],
+  ['already-know', 'You already know what to do.', 1],
+  ['already-know', 'Part of you already knows it.', 1],
+  ['is-the-entire', 'Consistency is the entire game.', 1],
+  ['is-the-entire', "That's the entire business model.", 1],
+  ['is-the-entire', 'He toured the entire factory.', 0],
+  ['the-entire-is', 'The entire point is that nobody reads.', 1],
+  ['the-entire-is', 'The entire business model is built on churn.', 1],
+  ['the-entire-is', 'The entire point of the exercise is repetition.', 1],
+  ['the-entire-is', 'He ate the entire pizza.', 0],
+  ['the-entire-is', 'The entire team was exhausted.', 1],
+  ['the-entire-is', 'The entire history of the modern industrial world economy is complex.', 0],
+  ['is-real', "The improvement is real, and it's not subtle.", 1],
+  ['is-real', 'This is the real work, and it never ends.', 1],
+  ['is-real', 'The demand is real and growing.', 1],
+  ['is-real', 'He is a real estate agent and it shows.', 0],
+  ['is-real', 'Is it real? And does it matter?', 0],
+  ['is-real', 'The painting is real, but stolen.', 0],
+  ['punchline', 'The punchline is that nobody laughed.', 1],
+  ['punchline', 'The punchline: nothing changed.', 1],
+  ['punchline', 'And the punchline? You knew.', 1],
+  ['punchline', 'He forgot the punchline entirely.', 0],
+  ['worth-naming', "That loss is real and it's worth naming.", 1],
+  ['worth-naming', 'It’s worth naming that this hurts.', 1],
+  ['worth-naming', 'The grief here is worth naming.', 1],
+  ['worth-naming', 'That anger feels worth naming out loud.', 1],
+  ['worth-naming', 'Worth naming: nobody asked for this.', 1],
+  ['worth-naming', "It's not worth naming names here.", 0],
+  ['worth-naming', 'They spent the meeting naming the new mascot.', 0],
+  ['worth-naming', 'The naming convention is worth documenting.', 0],
+  ['not-nothing', "That's not nothing.", 1],
+  ['not-nothing', 'Ten sign-ups in a week — that is not nothing.', 1],
+  ['not-nothing', "It's not nothing, even if it's not everything.", 1],
+  ['not-nothing', 'The launch drew a small crowd, which was not nothing.', 1],
+  ['not-nothing', 'She insisted that nothing was wrong.', 0],
+  ['not-nothing', 'There is nothing left to say.', 0],
+  ['is-the-whole', 'Distribution is the whole game.', 1],
+  ['is-the-whole', "Here's the whole pitch in one slide.", 1],
+  ['is-the-whole', 'That was the whole point of the meeting.', 1],
+  ['is-the-whole', 'The whole team showed up.', 0],
+  ['echo-triad', 'A shopping cart is an object in the system. A chat room is an object in the system.', 1, [2]],
+  ['echo-triad', 'The parser is a state machine. The renderer is a state machine. The scheduler is a state machine.', 1, [3]],
+  ['echo-triad', 'The parser is fast today. The renderer is fast today.', 0, []],
+  ['echo-triad', 'The parser is fast. The tests are slow.', 0, []],
+  ['performative-honesty', "I won't pretend the migration was painless.", 1],
+  ['performative-honesty', "Let's be honest: nobody reads the docs.", 1],
+  ['performative-honesty', 'To be clear, the API is unchanged.', 1],
+  ['performative-honesty', 'Honestly, it was fine.', 1],
+  ['performative-honesty', 'She answered honestly.', 0],
+  ['performative-honesty', 'Look at the diagram.', 0],
+  ['thats-the-part', "That's the part a counter can't reach.", 1],
+  ['thats-the-part', 'The part that makes me trust the rest is the errata.', 1],
+  ['thats-the-part', 'My favorite part of the demo was the undo.', 1],
+  ['thats-the-part', 'He played the part of the villain.', 0],
+  ['the-only-i-trust', 'It’s the only marketing I trust.', 1],
+  ['the-only-i-trust', 'The only benchmark that matters is retention.', 1],
+  ['the-only-i-trust', 'The only thing it needs is a cache.', 1],
+  ['the-only-i-trust', 'She was the only engineer on call.', 0],
+  ['take-my-word', "You don't have to take my word for it.", 1],
+  ['take-my-word', "Don't take my word for any of this.", 1],
+  ['take-my-word', 'He kept his word.', 0],
+  ['turns-out', 'Turns out the cache was never warm.', 1],
+  ['turns-out', 'It turns out that nobody tested it.', 1],
+  ['turns-out', 'She turns out solid work every week.', 0],
+  ['fits-in-your-head', 'The design is small enough to hold in your head.', 1],
+  ['fits-in-your-head', 'It ships with sane defaults and zero config.', 2],
+  ['fits-in-your-head', 'Install it and it just works.', 1],
+  ['fits-in-your-head', 'We choose boring technology on purpose.', 0],
+  ['fits-in-your-head', 'The helmet fits your head.', 0],
+  ['stacked-questions', 'Do I know how it works? Where it breaks? Which corners it cut?', 1, [3]],
+  ['stacked-questions', 'Was it worth it? Would I do it again?', 1, [2]],
+  ['stacked-questions', 'Did it work? Yes, and then some.', 0, []],
+  ['stacked-questions', 'What changed?', 0, []],
+  ['sentence-anaphora', 'Maybe nobody needed it. Maybe the timing was off. Maybe both.', 1, [3]],
+  ['sentence-anaphora', 'Maybe nobody needed it. Maybe the timing was off.', 0, []],
+  ['sentence-anaphora', 'The parser is small. The renderer is small. The scheduler is small.', 0, []],
+  ['sentence-anaphora', 'Everything changed. Everything slowed down. Everything cost more.', 1, [3]],
+  ['colon-triple', 'The fix needs three things: separate ports, separate processes, and separate state.', 1],
+  ['colon-triple', 'Each service gets its own everything: ports, processes, local state.', 1],
+  ['colon-triple', 'The recipe calls for flour, butter, and sugar.', 0],
+  ['colon-triple', 'Note: the flag is off by default.', 0],
+  ['heres-the-twist', "Here's the twist: nobody clicked it.", 1],
+  ['heres-the-twist', 'Here is the thing. The demo was fake.', 1],
+  ['heres-the-twist', "Here's a surprising result: it got faster.", 1],
+  ['heres-the-twist', "Here's the door code.", 0],
+  ['x-is-dead', 'Peer code review is dead.', 1],
+  ['x-is-dead', 'The old importer is dead; long live the importer.', 2],
+  ['x-is-dead', 'Long live the king.', 1],
+  ['x-is-dead', 'He played dead until the bear left.', 0],
+  ['thats-why-mattered', "That's why being able to open the environment mattered.", 1],
+  ['thats-why-mattered', 'This is why preserving every conversation mattered.', 1],
+  ['thats-why-mattered', "That's why the deadline counts.", 1],
+  ['thats-why-mattered', 'That is why we left early.', 0],
+  ['stranded-auxiliary', "The tool died; the data didn't.", 1],
+  ['stranded-auxiliary', "Reading mostly passed, writing didn't.", 1],
+  ['stranded-auxiliary', "Maybe it wouldn't have.", 1],
+  ['stranded-auxiliary', 'The test passed and the build was green.', 0],
+  ['ai-vocab', 'We delve into the intricacies of the interplay.', 3],
+  ['ai-vocab', 'Her vibrant tapestry hung in the bustling hall.', 3],
+  ['ai-vocab', 'A meticulously curated, seamless experience.', 2],
+  ['ai-vocab', 'The report was thorough and well organized.', 0],
+  ['not-just', 'This is not just a tool, but a philosophy.', 1],
+  ['not-just', 'Not only fast but also reliable.', 1],
+  ['not-just', 'It’s not a bug — it’s a feature.', 1],
+  ['not-just', 'He did not buy it.', 0],
+  ['not-just', 'She was not sure about the plan.', 0],
+  ['not-but', 'This is not a tool, but a philosophy.', 1],
+  ['not-but', 'The empty state isn’t filler. It’s orientation.', 1],
+  ['not-but', 'It is not merely useful, but essential.', 0],
+  ['not-but', 'He did not buy it.', 0],
+  ['not-but', 'She was not sure about the plan.', 0],
+  ['note-that', 'It is important to note that timing matters.', 1],
+  ['note-that', 'It’s worth noting the fees are separate.', 1],
+  ['note-that', 'It should be noted that this changed in 2020.', 1],
+  ['note-that', "It's worth pausing on that number.", 1],
+  ['note-that', 'It is worth asking who benefits.', 1],
+  ['note-that', 'Please note the door code.', 0],
+  ['testament', 'The building stands as a testament to postwar optimism.', 1],
+  ['testament', 'Her career is a testament to persistence.', 1],
+  ['testament', 'It serves as a stark reminder that nothing lasts.', 1],
+  ['testament', 'He read from the Old Testament.', 0],
+  ['crucial-role', 'Volunteers play a crucial role in the program.', 1],
+  ['crucial-role', 'She played a truly pivotal role in the merger.', 1],
+  ['crucial-role', 'He plays the role of the villain.', 0],
+  ['landscape', 'Adapting to an ever-evolving landscape.', 1],
+  ['landscape', 'The rapidly changing landscape of retail.', 1],
+  ['landscape', 'In today’s fast-paced world, attention is scarce.', 1],
+  ['landscape', 'The landscape outside the window was gray.', 0],
+  ['vague-experts', 'Experts argue that the policy failed.', 1],
+  ['vague-experts', 'Some critics have noted a decline in quality.', 1],
+  ['vague-experts', 'Industry reports suggest strong demand.', 1],
+  ['vague-experts', 'Dr. Chen argued the opposite in her paper.', 0],
+  ['despite-challenges', 'Despite these challenges, growth continued.', 1],
+  ['despite-challenges', 'The sector faces several challenges.', 1],
+  ['despite-challenges', 'Whether it works remains to be seen.', 1],
+  ['despite-challenges', 'Only time will tell whether it sticks.', 1],
+  ['despite-challenges', 'Time will tell.', 1],
+  ['despite-challenges', 'He arrived on time and will tell you himself.', 0],
+  ['despite-challenges', 'The climb was a challenge.', 0],
+  ['participle-tail', 'The bridge reopened in June, highlighting the city’s investment in infrastructure.', 1],
+  ['participle-tail', 'Sales doubled, underscoring the strength of the brand.', 1],
+  ['participle-tail', 'She kept highlighting passages in yellow.', 0],
+  ['participle-tail', 'The team, reflecting on the loss, regrouped.', 0],
+  ['promo', 'The inn is nestled in a quiet valley.', 1],
+  ['promo', 'The museum boasts a rich tapestry of exhibits.', 2],
+  ['promo', 'Located in the heart of downtown.', 1],
+  ['promo', 'A hidden gem with breathtaking views.', 2],
+  ['promo', 'The soup was rich and hearty.', 0],
+  ['ai-leftovers', 'As of my last update, the API was in beta.', 1],
+  ['ai-leftovers', 'As an AI language model, I cannot form opinions.', 1],
+  ['ai-leftovers', 'See example.com/page?utm_source=chatgpt.com for details.', 1],
+  ['ai-leftovers', 'contentReference[oaicite:0]{index=0}', 2],
+  ['ai-leftovers', 'The last update shipped on Tuesday.', 0]
+];
+
+for (const [id, sample, expectMatches, expectItems] of [...PATTERN_CASES_DE, ...PATTERN_CASES_EN]) {
+  test(caseName(id, sample), () => {
+    const found = patternsById[id].find(sample);
+    expectEqual(found.length, expectMatches, 'matches');
+    if (expectItems) expectEqual(found.map(f => f.count), expectItems, 'item counts');
+  });
+}
+
+test('Satzgrenzen isolieren den markierten Satz', () => {
+  const t = 'Erster Satz hier. Kein Schnörkel, kein Ballast. Letzter Satz.';
+  const m = patternsById['de-kein-kette'].find(t)[0];
+  const [s, e] = sentenceBounds(t, m.start, m.end);
+  expectEqual(t.slice(s, e), 'Kein Schnörkel, kein Ballast.', 'bounds');
+});
+
+test('sentence bounds isolate the flagged sentence', () => {
+  const t = 'First sentence here. No fluff, no filler. Last one.';
+  const m = patternsById['no-chain'].find(t)[0];
+  const [s, e] = sentenceBounds(t, m.start, m.end);
+  expectEqual(t.slice(s, e), 'No fluff, no filler.', 'bounds');
+});
+
+test('excerpts: 12 words of context on each side', () => {
+  const pre = Array.from({ length: 30 }, (_, i) => 'w' + i).join(' ');
+  const post = Array.from({ length: 30 }, (_, i) => 't' + i).join(' ');
+  const t = pre + '. No fluff, no filler, just results. ' + post + '.';
+  const regions = buildRegions(t, collectMatches(t, new Set(['no-chain'])).matches);
+  const wins = buildWindows(t, regions);
+  expectEqual(wins.length, 1, 'windows');
+  expectEqual(countWords(t.slice(0, wins[0].start)), 18, 'hidden before');
+  expectEqual(countWords(t.slice(wins[0].end)), 18, 'hidden after');
+});
+
+test('excerpts: nearby matches merge into one window', () => {
+  const pre = Array.from({ length: 30 }, (_, i) => 'w' + i).join(' ');
+  const post = Array.from({ length: 30 }, (_, i) => 't' + i).join(' ');
+  const t = pre + '. No fluff, no filler. Ok. No ads, no fees. ' + post + '.';
+  const regions = buildRegions(t, collectMatches(t, new Set(['no-chain'])).matches);
+  const wins = buildWindows(t, regions);
+  expectEqual(wins.length, 1, 'windows');
+  expectEqual(wins[0].regions.length, 2, 'regions in window');
+});
+
+test('excerpts: distant matches stay separate with a counted gap', () => {
+  const mid = Array.from({ length: 60 }, (_, i) => 'm' + i).join(' ');
+  const t = 'No fluff, no filler. ' + mid + '. No ads, no fees.';
+  const regions = buildRegions(t, collectMatches(t, new Set(['no-chain'])).matches);
+  const wins = buildWindows(t, regions);
+  expectEqual(wins.length, 2, 'windows');
+  expectEqual(countWords(t.slice(wins[0].end, wins[1].start)), 36, 'gap words');
+});
+
+test('url: normalizeUrl keeps http(s) URLs and trims whitespace', () => {
+  expectEqual(normalizeUrl('  https://example.com/a '), 'https://example.com/a', 'https');
+  expectEqual(normalizeUrl('http://example.com'), 'http://example.com', 'http');
+});
+
+test('url: normalizeUrl adds https:// to bare domains only', () => {
+  expectEqual(normalizeUrl('example.com/article'), 'https://example.com/article', 'bare domain');
+  expectEqual(normalizeUrl('javascript:alert(1)'), '', 'javascript scheme');
+  expectEqual(normalizeUrl('not a url'), '', 'plain words');
+  expectEqual(normalizeUrl(''), '', 'empty');
+});
+
+test('url: fragment round-trips a URL, including spaces', () => {
+  const url = 'https://example.com/some page?q=a b';
+  expectEqual(urlFromFragment(fragmentFromUrl(url)), url, 'round trip');
+  expectEqual(fragmentFromUrl(''), '', 'empty url');
+});
+
+test('url: urlFromFragment accepts raw unencoded fragments', () => {
+  expectEqual(urlFromFragment('#https://example.com/article'), 'https://example.com/article', 'raw');
+  expectEqual(urlFromFragment('#https://example.com/100%'), 'https://example.com/100%', 'bad percent-encoding');
+  expectEqual(urlFromFragment('#'), '', 'empty');
+  expectEqual(urlFromFragment('#just-some-anchor'), '', 'non-url anchor');
+});
+
+test('tooltip text combines pattern name and chain count', () => {
+  expectEqual(matchTipText('„Kein X, kein Y“-Ketten', '3 „kein“-Glieder'), '„Kein X, kein Y“-Ketten · 3 „kein“-Glieder', 'with badge');
+  expectEqual(matchTipText('„Die Pointe ist“', undefined), '„Die Pointe ist“', 'without badge');
+});
+
+test('example text trips every English pattern exactly once', () => {
+  const english = patternsFor('en');
+  const all = new Set(english.map(p => p.id));
+  const { matches } = collectMatches(EXAMPLE_EN, all);
+  expectEqual(matches.length, english.length, 'matches');
+  expectEqual(new Set(matches.map(m => m.patternId)).size, english.length, 'distinct patterns');
+  expectEqual(buildRegions(EXAMPLE_EN, matches).length, english.length - 1, 'flagged sentences (two cliches share one)');
+});
+
+test('das deutsche Beispiel trifft jedes deutsche Muster mindestens einmal', () => {
+  const german = patternsFor('de');
+  const { perPattern } = collectMatches(EXAMPLE_DE, new Set(german.map(p => p.id)));
+  const missing = german.filter(p => perPattern[p.id] === 0).map(p => p.id);
+  expectEqual(missing, [], 'Muster ohne Treffer');
+});
+
+test('der deutsche Schlussabsatz leuchtet nicht auf', () => {
+  const closing = EXAMPLE_DE.split('\n\n').pop();
+  const { matches } = collectMatches(closing, new Set(patternsFor('de').map(p => p.id)));
+  expectEqual(matches.length, 0, 'Treffer im Schlussabsatz');
+});
+
+test('Sprachkennung erkennt deutschen und englischen Text', () => {
+  expectEqual(detectLanguage(EXAMPLE_DE), 'de', 'deutsches Beispiel');
+  expectEqual(detectLanguage(EXAMPLE_EN), 'en', 'englisches Beispiel');
+  expectEqual(detectLanguage('Kurz und gut.'), null, 'zu kurz');
+  expectEqual(detectLanguage(''), null, 'leer');
+});
+
+test('patternsFor filtert nach Sprache', () => {
+  expectEqual(patternsFor('de').every(p => p.lang === 'de'), true, 'nur deutsche');
+  expectEqual(patternsFor('en').every(p => p.lang === 'en'), true, 'nur englische');
+  expectEqual(patternsFor('both').length, patternsFor('de').length + patternsFor('en').length, 'beide');
+  expectEqual(patternsFor('de').length > 0 && patternsFor('en').length > 0, true, 'beide Sätze gefüllt');
+});
+
+test('Musterkatalog: eindeutige IDs, Sprache, Name, Beschreibung, Finder', () => {
+  expectEqual(new Set(patterns.map(p => p.id)).size, patterns.length, 'eindeutige IDs');
+  const broken = patterns.filter(p => !p.name || !p.description || typeof p.find !== 'function'
+    || (p.lang !== 'de' && p.lang !== 'en'));
+  expectEqual(broken.map(p => p.id), [], 'unvollständige Muster');
+});
+
+test('Oberflächentexte: beide Sprachen tragen dieselben Schlüssel', () => {
+  expectEqual(Object.keys(UI.de).sort(), Object.keys(UI.en).sort(), 'Schlüssel');
+  expectEqual(uiLangFor('de'), 'de', 'de');
+  expectEqual(uiLangFor('both'), 'de', 'both bleibt deutsch');
+  expectEqual(uiLangFor('en'), 'en', 'en');
+});
+
+test('collection keeps repeated openers ahead of overlapping phrase matches', () => {
+  const t = 'Maybe not speed, but clarity. Maybe not scale, but simplicity. Maybe not polish, but utility.';
+  const { matches } = collectMatches(t, new Set(['sentence-anaphora', 'not-but']));
+  expectEqual(matches.length, 4, 'matches');
+  expectEqual(matches.filter(m => m.patternId === 'sentence-anaphora').length, 1, 'opener matches');
+  expectEqual(matches.filter(m => m.patternId === 'not-but').length, 3, 'not-but matches');
+});
+
+test('Satzanfänge bleiben vor überlappenden Phrasen-Treffern', () => {
+  const t = 'Vielleicht nicht Tempo, sondern Klarheit. Vielleicht nicht Größe, sondern Einfachheit. Vielleicht nicht Glanz, sondern Nutzen.';
+  const { matches } = collectMatches(t, new Set(['de-satzanaphora', 'de-nicht-sondern']));
+  expectEqual(matches.filter(m => m.patternId === 'de-satzanaphora').length, 1, 'Anaphora-Treffer');
+  expectEqual(matches.filter(m => m.patternId === 'de-nicht-sondern').length, 3, 'nicht-sondern-Treffer');
+});
+
+test('deutsche Ketten nehmen „und“ und „sowie“ als Trenner', () => {
+  const und = patternsById['de-kein-kette'].find('Kein Abo und kein Kleingedrucktes.');
+  expectEqual(und.length, 1, 'und');
+  expectEqual(und[0].count, 2, 'Glieder mit und');
+  const sowie = patternsById['de-ohne-kette'].find('Ohne Abo sowie ohne Werbung.');
+  expectEqual(sowie.length, 1, 'sowie');
+  expectEqual(sowie[0].count, 2, 'Glieder mit sowie');
+  expectEqual(patternsById['no-chain'].find('No fees sowie no ads.').length, 0, 'englische Kette ignoriert „sowie“');
+});
+
+test('Umlaute brechen die Wortgrenzen nicht', () => {
+  expectEqual(patternsById['de-ki-vokabular'].find('maßgeschneidert').length, 1, 'ß am Wortende');
+  expectEqual(patternsById['de-ki-vokabular'].find('unmaßgeschneidert').length, 0, 'kein Treffer im Wortinneren');
+  expectEqual(patternsById['de-werbesprache'].find('atemberaubende Höhen').length, 1, 'Umlaut im Folgewort');
+});
+// ==== tests end ====
+
+function renderTestSummary() {
+  if (!testSummary) return;
+  if (!testResults) {
+    testSummary.textContent = t.testsRunning;
+    return;
+  }
+  const failed = testResults.filter(r => !r.ok);
+  const passedCount = testResults.length - failed.length;
+  testSummary.textContent = failed.length === 0
+    ? t.testsPassed(passedCount)
+    : t.testsFailed(passedCount, failed.length);
+  testSummary.classList.toggle('has-fail', failed.length > 0);
+  testList.innerHTML = '';
+  for (const r of [...failed, ...testResults.filter(r => r.ok)]) {
+    const li = document.createElement('li');
+    li.className = r.ok ? 'pass' : 'fail';
+    li.textContent = (r.ok ? '✓ ' : '✗ ') + r.name + (r.ok ? '' : ' — ' + r.message);
+    testList.append(li);
+  }
+}
+
+function runTests() {
+  const results = [];
+  for (const t of selfTests) {
+    try {
+      t.fn();
+      results.push({ name: t.name, ok: true });
+    } catch (err) {
+      results.push({ name: t.name, ok: false, message: err && err.message ? err.message : String(err) });
+    }
+  }
+  testResults = results;
+  renderTestSummary();
+}
+
+if ('requestIdleCallback' in window) {
+  requestIdleCallback(runTests);
+} else {
+  setTimeout(runTests, 50);
+}
+</script>
+</body>
+</html>

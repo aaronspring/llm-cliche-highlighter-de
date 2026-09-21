@@ -1,0 +1,12 @@
+LLM-Floskel-Marker (llm-cliche-highlighter-de)
+
+This product includes software developed by Simon Willison:
+"LLM cliché highlighter" from https://github.com/simonw/tools,
+licensed under the Apache License, Version 2.0.
+
+Copyright 2025 Simon Willison
+  Original English pattern set, page layout and self-test harness.
+
+Copyright 2026 Aaron Spring
+  German pattern catalogue, language switcher, bilingual interface,
+  Unicode-aware matching and dark mode.
